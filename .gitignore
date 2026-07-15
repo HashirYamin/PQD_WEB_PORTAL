@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend build
+frontend/dist/
+
+# Local database/data
+backend/data/
+
+# User-uploaded and generated files
+backend/uploads/documents/*
+backend/uploads/generated/*
+backend/uploads/logos/*
+
+# Keep empty upload folders
+!backend/uploads/documents/.gitkeep
+!backend/uploads/generated/.gitkeep
+!backend/uploads/logos/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
