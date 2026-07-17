@@ -14,7 +14,15 @@ const authenticate = async (req, res, next) => {
       include: [{ model: Company, as: 'company' }]
     });
 
-    if (!user || !user.isActive) return res.status(401).json({ message: 'Account is unavailable.' });
+    if (
+  !user ||
+  !user.isActive ||
+  (user.companyId && !user.company?.isActive)
+) {
+  return res.status(401).json({
+    message: 'Account is unavailable.'
+  });
+}
     req.user = user;
     next();
   } catch (error) {

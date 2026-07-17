@@ -1,6 +1,11 @@
 const express = require('express');
 const fs = require('fs');
-const { Company, User, AlertSetting } = require('../models');
+const {
+  sequelize,
+  Company,
+  User,
+  AlertSetting
+} = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createUploader } = require('../utils/upload');
 const { logActivity } = require('../utils/activity');
@@ -9,7 +14,7 @@ const router = express.Router();
 const logoUpload = createUploader('logos', { allowedMimeTypes: ['image/png', 'image/jpeg'], maxBytes: 5 * 1024 * 1024 }).single('logo');
 
 router.use(authenticate);
-
+router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     if (req.user.role !== 'SUPER_ADMIN') {
@@ -30,7 +35,193 @@ router.post('/', authorize('SUPER_ADMIN'), async (req, res, next) => {
     res.status(201).json({ company });
   } catch (error) { next(error); }
 });
+router.get(
+  '/registrations/pending',
+  authorize('SUPER_ADMIN'),
+  async (req, res, next) => {
+    try {
+      const inactiveCompanies = await Company.findAll({
+        where: {
+          isActive: false
+        },
+        include: [
+          {
+            model: User,
+            as: 'users',
+            attributes: {
+              exclude: ['passwordHash']
+            }
+          }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
 
+      const companies = inactiveCompanies.filter(
+        (company) =>
+          company.settings?.registrationStatus ===
+          'PENDING_APPROVAL'
+      );
+
+      res.json({ companies });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.patch(
+  '/:id/approve-registration',
+  authorize('SUPER_ADMIN'),
+  async (req, res, next) => {
+    const transaction = await sequelize.transaction();
+
+    try {
+      const company = await Company.findByPk(
+        req.params.id,
+        { transaction }
+      );
+
+      if (!company) {
+        await transaction.rollback();
+
+        return res.status(404).json({
+          message: 'Company registration not found.'
+        });
+      }
+
+      if (
+        company.settings?.registrationStatus !==
+        'PENDING_APPROVAL'
+      ) {
+        await transaction.rollback();
+
+        return res.status(400).json({
+          message:
+            'This company is not waiting for approval.'
+        });
+      }
+
+      await company.update(
+        {
+          isActive: true,
+          settings: {
+            ...(company.settings || {}),
+            registrationStatus: 'APPROVED',
+            approvedAt: new Date().toISOString(),
+            approvedBy: req.user.id
+          }
+        },
+        { transaction }
+      );
+
+      await User.update(
+        {
+          isActive: true
+        },
+        {
+          where: {
+            companyId: company.id,
+            role: 'COMPANY_ADMIN'
+          },
+          transaction
+        }
+      );
+
+      await transaction.commit();
+
+      req.companyId = company.id;
+
+      await logActivity(
+        req,
+        'APPROVE_REGISTRATION',
+        'Company',
+        company.id,
+        { name: company.name }
+      );
+
+      res.json({
+        message:
+          'Company registration approved successfully.',
+        company
+      });
+    } catch (error) {
+      if (!transaction.finished) {
+        await transaction.rollback();
+      }
+
+      next(error);
+    }
+  }
+);
+
+router.patch(
+  '/:id/reject-registration',
+  authorize('SUPER_ADMIN'),
+  async (req, res, next) => {
+    try {
+      const company = await Company.findByPk(
+        req.params.id
+      );
+
+      if (!company) {
+        return res.status(404).json({
+          message: 'Company registration not found.'
+        });
+      }
+
+      if (
+        company.settings?.registrationStatus !==
+        'PENDING_APPROVAL'
+      ) {
+        return res.status(400).json({
+          message:
+            'This company is not waiting for review.'
+        });
+      }
+
+      const rejectionReason = String(
+        req.body.rejectionReason || ''
+      ).trim();
+
+      if (!rejectionReason) {
+        return res.status(400).json({
+          message: 'A rejection reason is required.'
+        });
+      }
+
+      await company.update({
+        isActive: false,
+        settings: {
+          ...(company.settings || {}),
+          registrationStatus: 'REJECTED',
+          rejectionReason,
+          rejectedAt: new Date().toISOString(),
+          rejectedBy: req.user.id
+        }
+      });
+
+      req.companyId = company.id;
+
+      await logActivity(
+        req,
+        'REJECT_REGISTRATION',
+        'Company',
+        company.id,
+        {
+          name: company.name,
+          rejectionReason
+        }
+      );
+
+      res.json({
+        message: 'Company registration rejected.',
+        company
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 router.get('/:id', async (req, res, next) => {
   try {
     if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId !== req.params.id) return res.status(403).json({ message: 'Access denied.' });

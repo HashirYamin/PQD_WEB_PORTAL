@@ -376,3 +376,36 @@ tbody tr:hover { background: #fbfdff; }
 .version-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .version-button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #dbe4ee; border-radius: 7px; background: #f8fbff; color: #28649b; padding: 5px 7px; font-size: 9px; font-weight: 800; }
 .version-button:hover { border-color: #8fb7dc; background: #edf6ff; }
+
+.signup-card {
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.signup-card h3 {
+  margin: 20px 0 6px;
+  font-size: 15px;
+}
+
+.signup-card textarea {
+  width: 100%;
+  min-height: 85px;
+  resize: vertical;
+  font: inherit;
+}
+
+.auth-switch {
+  margin-top: 18px;
+  text-align: center;
+}
+
+.auth-switch a {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.password-help {
+  display: block;
+  line-height: 1.5;
+  opacity: 0.75;
+}

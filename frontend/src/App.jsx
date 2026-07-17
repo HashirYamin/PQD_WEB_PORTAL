@@ -15,11 +15,13 @@ import CreatePqdPage from './pages/CreatePqdPage';
 import GeneratedPqdsPage from './pages/GeneratedPqdsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
+import SignupPage from './pages/SignupPage';
 
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<DashboardPage />} />
         <Route path="companies" element={<CompaniesPage />} />

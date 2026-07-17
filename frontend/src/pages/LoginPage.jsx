@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import {
+  Link,
+  useNavigate
+} from 'react-router-dom';
 import { FileCheck2, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -29,11 +32,21 @@ export default function LoginPage() {
         <div className="login-brand"><div className="brand-mark large"><ShieldCheck size={28} /></div><div><strong>PQD Web Portal</strong><span>Prequalification document automation</span></div></div>
         <h1>Welcome back</h1>
         <p>Sign in to manage companies, documents, checklists, projects, and submissions.</p>
+        
         <form onSubmit={submit} className="stack-form">
           <label>Email address<div className="input-with-icon"><Mail size={17} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div></label>
           <label>Password<div className="input-with-icon"><LockKeyhole size={17} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div></label>
           <button className="primary-button full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
+
+        {/* Your new link added right here */}
+        <p className="auth-switch">
+          New company?{' '}
+          <Link to="/signup">
+            Register your company
+          </Link>
+        </p> 
+
         <div className="demo-credentials"><strong>Demo accounts</strong><span>Company Admin: admin@abc.local / Admin@123</span><span>Super Admin: superadmin@pqd.local / Admin@123</span></div>
       </div>
       <div className="login-visual">
