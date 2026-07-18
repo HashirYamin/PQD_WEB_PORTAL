@@ -5,7 +5,8 @@ import {
   FileCheck2,
   LockKeyhole,
   Mail,
-  ShieldCheck
+  Phone,
+  MapPin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../api/client';
@@ -13,12 +14,10 @@ import api from '../api/client';
 const initialForm = {
   companyName: '',
   crNumber: '',
-  companyEmail: '',
-  companyPhone: '',
   address: '',
-  contactPerson: '',
+  phone: '',
+  email: '',
   adminName: '',
-  adminEmail: '',
   password: '',
   confirmPassword: ''
 };
@@ -72,7 +71,7 @@ export default function SignupPage() {
         <div className="login-card">
           <div className="login-brand">
             <div className="brand-mark large">
-              <ShieldCheck size={28} />
+              <FileCheck2 size={28} />
             </div>
 
             <div>
@@ -84,9 +83,9 @@ export default function SignupPage() {
           <h1>Registration submitted</h1>
 
           <p>
-            Your company registration is waiting for
-            Super Admin approval. You can sign in after
-            your account has been approved.
+            Your registration is waiting for Super Admin
+            approval. Use the same email and password to
+            sign in after approval.
           </p>
 
           <Link
@@ -103,11 +102,12 @@ export default function SignupPage() {
               <FileCheck2 size={34} />
             </div>
 
-            <h2>Your company workspace is being prepared.</h2>
+            <h2>Your company workspace is being reviewed.</h2>
 
             <p>
-              After approval, you can manage documents,
-              projects, checklists and PQD submissions.
+              After approval, you can manage company
+              documents, projects, checklists and PQD
+              submissions.
             </p>
           </div>
         </div>
@@ -132,22 +132,21 @@ export default function SignupPage() {
         <h1>Register your company</h1>
 
         <p>
-          Submit your details. Access will be activated
-          after Super Admin approval.
+          Enter your company details. Access will be
+          activated after administrator approval.
         </p>
 
         <form
-          onSubmit={submit}
           className="stack-form"
+          onSubmit={submit}
         >
-          <h3>Company information</h3>
-
           <label>
             Company name
             <input
               name="companyName"
               value={form.companyName}
               onChange={updateField}
+              placeholder="Enter registered company name"
               required
             />
           </label>
@@ -158,20 +157,21 @@ export default function SignupPage() {
               name="crNumber"
               value={form.crNumber}
               onChange={updateField}
+              placeholder="Enter CR number"
               required
             />
           </label>
 
           <label>
-            Company email
+            Company address
             <div className="input-with-icon">
-              <Mail size={17} />
+              <MapPin size={17} />
 
               <input
-                type="email"
-                name="companyEmail"
-                value={form.companyEmail}
+                name="address"
+                value={form.address}
                 onChange={updateField}
+                placeholder="Enter company address"
                 required
               />
             </div>
@@ -179,33 +179,40 @@ export default function SignupPage() {
 
           <label>
             Company phone
-            <input
-              name="companyPhone"
-              value={form.companyPhone}
-              onChange={updateField}
-            />
+            <div className="input-with-icon">
+              <Phone size={17} />
+
+              <input
+                type="tel"
+                name="phone"
+                value={form.phone}
+                onChange={updateField}
+                placeholder="Enter company phone number"
+                required
+              />
+            </div>
           </label>
 
           <label>
-            Company address
-            <textarea
-              name="address"
-              value={form.address}
-              onChange={updateField}
-              rows="3"
-            />
-          </label>
+            Company or administrator email
+            <div className="input-with-icon">
+              <Mail size={17} />
 
-          <label>
-            Contact person
-            <input
-              name="contactPerson"
-              value={form.contactPerson}
-              onChange={updateField}
-            />
-          </label>
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={updateField}
+                placeholder="Enter company or your email"
+                required
+              />
+            </div>
 
-          <h3>Company administrator</h3>
+            <small>
+              This email will be used for communication
+              and account login.
+            </small>
+          </label>
 
           <label>
             Administrator full name
@@ -213,23 +220,9 @@ export default function SignupPage() {
               name="adminName"
               value={form.adminName}
               onChange={updateField}
+              placeholder="Enter account administrator name"
               required
             />
-          </label>
-
-          <label>
-            Administrator email
-            <div className="input-with-icon">
-              <Mail size={17} />
-
-              <input
-                type="email"
-                name="adminEmail"
-                value={form.adminEmail}
-                onChange={updateField}
-                required
-              />
-            </div>
           </label>
 
           <label>
@@ -242,6 +235,7 @@ export default function SignupPage() {
                 name="password"
                 value={form.password}
                 onChange={updateField}
+                placeholder="Create password"
                 required
               />
             </div>
@@ -257,13 +251,14 @@ export default function SignupPage() {
                 name="confirmPassword"
                 value={form.confirmPassword}
                 onChange={updateField}
+                placeholder="Confirm password"
                 required
               />
             </div>
           </label>
 
           <small className="password-help">
-            Minimum 8 characters with uppercase,
+            Use at least 8 characters with uppercase,
             lowercase, number and special character.
           </small>
 
@@ -278,7 +273,7 @@ export default function SignupPage() {
         </form>
 
         <p className="auth-switch">
-          Already have an account?{' '}
+          Already registered?{' '}
           <Link to="/login">Sign in</Link>
         </p>
       </div>
@@ -290,28 +285,28 @@ export default function SignupPage() {
           </div>
 
           <h2>
-            Create a secure PQD workspace for your company.
+            Create a secure workspace for PQD submissions.
           </h2>
 
           <p>
-            Manage documents, project checklists,
-            expiry warnings and generated submissions.
+            Organize reusable documents, project-specific
+            checklists, expiry warnings and generated PDFs.
           </p>
 
           <div className="visual-grid">
             <div>
-              <strong>Approval based</strong>
-              <span>Reviewed by Super Admin</span>
+              <strong>Reviewed</strong>
+              <span>Super Admin approval</span>
             </div>
 
             <div>
-              <strong>Company separated</strong>
-              <span>Independent company data</span>
+              <strong>Separated</strong>
+              <span>Private company data</span>
             </div>
 
             <div>
-              <strong>Secure access</strong>
-              <span>Role-based permissions</span>
+              <strong>Secure</strong>
+              <span>Role-based access</span>
             </div>
           </div>
         </div>

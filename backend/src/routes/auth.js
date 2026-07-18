@@ -35,7 +35,7 @@ const signupLimiter = rateLimit({
   }
 });
 
-/* LOGIN */
+/* Login */
 router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -52,17 +52,38 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       include: [{ model: Company, as: 'company' }]
     });
 
-    const validPassword =
-      user && (await bcrypt.compare(password, user.passwordHash));
-
     if (
       !user ||
-      !user.isActive ||
-      (user.companyId && !user.company?.isActive) ||
-      !validPassword
+      !(await bcrypt.compare(password, user.passwordHash))
     ) {
       return res.status(401).json({
         message: 'Invalid email or password.'
+      });
+    }
+
+    if (
+      !user.isActive ||
+      (user.companyId && !user.company?.isActive)
+    ) {
+      const registrationStatus =
+        user.company?.settings?.registrationStatus;
+
+      if (registrationStatus === 'PENDING_APPROVAL') {
+        return res.status(403).json({
+          message:
+            'Your company registration is waiting for Super Admin approval.'
+        });
+      }
+
+      if (registrationStatus === 'REJECTED') {
+        return res.status(403).json({
+          message:
+            'Your company registration was rejected. Contact the portal administrator.'
+        });
+      }
+
+      return res.status(403).json({
+        message: 'Your account is currently unavailable.'
       });
     }
 
@@ -73,13 +94,15 @@ router.post('/login', loginLimiter, async (req, res, next) => {
         companyId: user.companyId
       },
       env.jwtSecret,
-      { expiresIn: env.jwtExpiresIn }
+      {
+        expiresIn: env.jwtExpiresIn
+      }
     );
 
     const safeUser = user.toJSON();
     delete safeUser.passwordHash;
 
-    res.json({
+    return res.json({
       token,
       user: safeUser
     });
@@ -88,7 +111,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   }
 });
 
-/* COMPANY SIGNUP */
+/* Company signup */
 router.post(
   '/register-company',
   signupLimiter,
@@ -104,33 +127,23 @@ router.post(
         req.body.crNumber || ''
       ).trim();
 
-      const companyEmail = String(
-        req.body.companyEmail || ''
-      )
-        .trim()
-        .toLowerCase();
-
-      const companyPhone = String(
-        req.body.companyPhone || ''
-      ).trim();
-
       const address = String(
         req.body.address || ''
       ).trim();
 
-      const contactPerson = String(
-        req.body.contactPerson || ''
+      const phone = String(
+        req.body.phone || ''
       ).trim();
+
+      const email = String(
+        req.body.email || ''
+      )
+        .trim()
+        .toLowerCase();
 
       const adminName = String(
         req.body.adminName || ''
       ).trim();
-
-      const adminEmail = String(
-        req.body.adminEmail || ''
-      )
-        .trim()
-        .toLowerCase();
 
       const password = String(
         req.body.password || ''
@@ -143,14 +156,24 @@ router.post(
       if (
         !companyName ||
         !crNumber ||
-        !companyEmail ||
+        !address ||
+        !phone ||
+        !email ||
         !adminName ||
-        !adminEmail ||
         !password ||
         !confirmPassword
       ) {
         return res.status(400).json({
           message: 'Please complete all required fields.'
+        });
+      }
+
+      const validEmail =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+      if (!validEmail) {
+        return res.status(400).json({
+          message: 'Enter a valid email address.'
         });
       }
 
@@ -175,13 +198,13 @@ router.post(
       }
 
       const existingUser = await User.findOne({
-        where: { email: adminEmail }
+        where: { email }
       });
 
       if (existingUser) {
         return res.status(409).json({
           message:
-            'An account already exists with this administrator email.'
+            'An account already exists with this email address.'
         });
       }
 
@@ -189,7 +212,7 @@ router.post(
         where: {
           [Op.or]: [
             { crNumber },
-            { email: companyEmail }
+            { email }
           ]
         }
       });
@@ -197,7 +220,7 @@ router.post(
       if (existingCompany) {
         return res.status(409).json({
           message:
-            'A company already exists with this CR number or company email.'
+            'A company already exists with this CR number or email address.'
         });
       }
 
@@ -209,10 +232,10 @@ router.post(
         {
           name: companyName,
           crNumber,
-          address: address || null,
-          contactPerson: contactPerson || adminName,
-          email: companyEmail,
-          phone: companyPhone || null,
+          address,
+          contactPerson: adminName,
+          email,
+          phone,
           isActive: false,
           settings: {
             registrationStatus: 'PENDING_APPROVAL',
@@ -225,7 +248,7 @@ router.post(
       const user = await User.create(
         {
           name: adminName,
-          email: adminEmail,
+          email,
           passwordHash,
           role: 'COMPANY_ADMIN',
           companyId: company.id,
@@ -238,7 +261,7 @@ router.post(
         {
           companyId: company.id,
           daysBefore: [30, 15, 7],
-          recipientEmails: adminEmail,
+          recipientEmails: email,
           frequency: 'DAILY',
           enabled: true
         },
@@ -253,7 +276,7 @@ router.post(
         registration: {
           companyId: company.id,
           companyName: company.name,
-          administratorEmail: user.email,
+          email: user.email,
           status: 'PENDING_APPROVAL'
         }
       });
@@ -267,12 +290,8 @@ router.post(
   }
 );
 
-router.get(
-  '/me',
-  authenticate,
-  async (req, res) => {
-    res.json({ user: req.user });
-  }
-);
+router.get('/me', authenticate, async (req, res) => {
+  res.json({ user: req.user });
+});
 
 module.exports = router;
