@@ -13,10 +13,14 @@ const Company = sequelize.define('Company', {
   ...base,
   name: { type: DataTypes.STRING, allowNull: false },
   crNumber: DataTypes.STRING,
+  yearEstablished: DataTypes.INTEGER,
+  natureOfWork: DataTypes.TEXT,
   address: DataTypes.TEXT,
   contactPerson: DataTypes.STRING,
   email: DataTypes.STRING,
   phone: DataTypes.STRING,
+  fax: DataTypes.STRING,
+  website: DataTypes.STRING,
   logoPath: DataTypes.STRING,
   stampPath: DataTypes.STRING,
   settings: { type: DataTypes.JSON, defaultValue: {} },
@@ -41,8 +45,12 @@ const CompanyDocument = sequelize.define('CompanyDocument', {
   ...base,
   title: { type: DataTypes.STRING, allowNull: false },
   category: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Other' },
+  documentNumber: DataTypes.STRING,
+  issuingAuthority: DataTypes.STRING,
   issueDate: DataTypes.DATEONLY,
   expiryDate: DataTypes.DATEONLY,
+  expiryNotApplicable: { type: DataTypes.BOOLEAN, defaultValue: false },
+  ocrData: { type: DataTypes.JSON, defaultValue: {} },
   documentType: DataTypes.STRING,
   remarks: DataTypes.TEXT,
   filePath: { type: DataTypes.STRING, allowNull: false },
@@ -51,94 +59,59 @@ const CompanyDocument = sequelize.define('CompanyDocument', {
   sizeBytes: DataTypes.INTEGER,
   isArchived: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
+
 const CompanyAddress = sequelize.define('CompanyAddress', {
   ...base,
-  label: {
-    type: DataTypes.STRING,
-    defaultValue: 'Main Office'
-  },
-  addressLine1: {
-    type: DataTypes.TEXT,
-    allowNull: false
-  },
+  label: { type: DataTypes.STRING, defaultValue: 'Main Office' },
+  addressLine1: { type: DataTypes.TEXT, allowNull: false },
   addressLine2: DataTypes.TEXT,
   city: DataTypes.STRING,
   state: DataTypes.STRING,
   postalCode: DataTypes.STRING,
   country: DataTypes.STRING,
-  isPrimary: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  }
+  isPrimary: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
 
 const CompanySocialLink = sequelize.define('CompanySocialLink', {
   ...base,
-  platform: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  url: {
-    type: DataTypes.TEXT,
-    allowNull: false
-  },
-  sortOrder: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
-  }
+  platform: { type: DataTypes.STRING, allowNull: false },
+  url: { type: DataTypes.TEXT, allowNull: false },
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 }
 });
 
 const CompanyContact = sequelize.define('CompanyContact', {
   ...base,
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
+  name: { type: DataTypes.STRING, allowNull: false },
   jobTitle: DataTypes.STRING,
+  department: DataTypes.STRING,
   email: DataTypes.STRING,
   phone: DataTypes.STRING,
-  isPrimary: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  }
+  mobile: DataTypes.STRING,
+  isPrimary: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
 
-const CompanyProfileDocument = sequelize.define(
-  'CompanyProfileDocument',
-  {
-    ...base,
-    type: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        isIn: [['LEGAL', 'CERTIFICATION']]
-      }
-    },
-    title: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    documentNumber: DataTypes.STRING,
-    issueDate: DataTypes.DATEONLY,
-    expiryDate: DataTypes.DATEONLY,
-    authority: DataTypes.STRING,
-    remarks: DataTypes.TEXT,
-    filePath: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    originalName: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    mimeType: DataTypes.STRING,
-    sizeBytes: DataTypes.INTEGER,
-    isArchived: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
-    }
-  }
-);
+const CompanyProfileDocument = sequelize.define('CompanyProfileDocument', {
+  ...base,
+  type: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: { isIn: [['LEGAL', 'CERTIFICATION']] }
+  },
+  title: { type: DataTypes.STRING, allowNull: false },
+  documentNumber: DataTypes.STRING,
+  issueDate: DataTypes.DATEONLY,
+  expiryDate: DataTypes.DATEONLY,
+  expiryNotApplicable: { type: DataTypes.BOOLEAN, defaultValue: false },
+  authority: DataTypes.STRING,
+  remarks: DataTypes.TEXT,
+  ocrData: { type: DataTypes.JSON, defaultValue: {} },
+  filePath: { type: DataTypes.STRING, allowNull: false },
+  originalName: { type: DataTypes.STRING, allowNull: false },
+  mimeType: DataTypes.STRING,
+  sizeBytes: DataTypes.INTEGER,
+  isArchived: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
+
 const MasterChecklistItem = sequelize.define('MasterChecklistItem', {
   ...base,
   title: { type: DataTypes.TEXT, allowNull: false },
@@ -233,6 +206,20 @@ CompanyDocument.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 User.hasMany(CompanyDocument, { foreignKey: 'createdById', as: 'uploadedDocuments' });
 CompanyDocument.belongsTo(User, { foreignKey: 'createdById', as: 'createdBy' });
 
+Company.hasMany(CompanyAddress, { foreignKey: 'companyId', as: 'addresses', onDelete: 'CASCADE' });
+CompanyAddress.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+Company.hasMany(CompanySocialLink, { foreignKey: 'companyId', as: 'socialLinks', onDelete: 'CASCADE' });
+CompanySocialLink.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+Company.hasMany(CompanyContact, { foreignKey: 'companyId', as: 'contacts', onDelete: 'CASCADE' });
+CompanyContact.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+
+Company.hasMany(CompanyProfileDocument, { foreignKey: 'companyId', as: 'profileDocuments', onDelete: 'CASCADE' });
+CompanyProfileDocument.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+User.hasMany(CompanyProfileDocument, { foreignKey: 'createdById', as: 'uploadedProfileDocuments' });
+CompanyProfileDocument.belongsTo(User, { foreignKey: 'createdById', as: 'createdBy' });
+
 Company.hasMany(MasterChecklistItem, { foreignKey: 'companyId', as: 'masterChecklistItems' });
 MasterChecklistItem.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 
@@ -283,6 +270,10 @@ module.exports = {
   Company,
   User,
   CompanyDocument,
+  CompanyAddress,
+  CompanySocialLink,
+  CompanyContact,
+  CompanyProfileDocument,
   MasterChecklistItem,
   Project,
   ChildChecklist,

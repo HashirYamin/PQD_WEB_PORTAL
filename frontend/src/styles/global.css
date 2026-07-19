@@ -409,3 +409,104 @@ tbody tr:hover { background: #fbfdff; }
   line-height: 1.5;
   opacity: 0.75;
 }
+/* Add this block at the bottom of frontend/src/styles/global.css */
+.profile-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 22px;
+  padding: 6px;
+  border: 1px solid var(--border, #dfe5ec);
+  border-radius: 14px;
+  background: #fff;
+  overflow-x: auto;
+}
+
+.profile-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #52606d;
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.profile-tab:hover {
+  background: #f3f6f9;
+}
+
+.profile-tab.active {
+  background: #0b4778;
+  color: #fff;
+}
+
+.profile-link-list {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-link-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e1e7ee;
+  border-radius: 12px;
+}
+
+.profile-link-row > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profile-link-row a {
+  overflow: hidden;
+  color: #1769aa;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-subtext,
+.ocr-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #6b7785;
+}
+
+.ocr-note {
+  color: #8a5a00;
+}
+
+.ocr-help {
+  padding: 12px 14px;
+  border: 1px solid #f0d39a;
+  border-radius: 10px;
+  background: #fff9eb;
+  color: #6d4b00;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .profile-tabs {
+    border-radius: 10px;
+  }
+
+  .profile-link-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .profile-link-row .row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
