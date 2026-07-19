@@ -51,7 +51,94 @@ const CompanyDocument = sequelize.define('CompanyDocument', {
   sizeBytes: DataTypes.INTEGER,
   isArchived: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
+const CompanyAddress = sequelize.define('CompanyAddress', {
+  ...base,
+  label: {
+    type: DataTypes.STRING,
+    defaultValue: 'Main Office'
+  },
+  addressLine1: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  addressLine2: DataTypes.TEXT,
+  city: DataTypes.STRING,
+  state: DataTypes.STRING,
+  postalCode: DataTypes.STRING,
+  country: DataTypes.STRING,
+  isPrimary: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
+});
 
+const CompanySocialLink = sequelize.define('CompanySocialLink', {
+  ...base,
+  platform: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  url: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  }
+});
+
+const CompanyContact = sequelize.define('CompanyContact', {
+  ...base,
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  jobTitle: DataTypes.STRING,
+  email: DataTypes.STRING,
+  phone: DataTypes.STRING,
+  isPrimary: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
+});
+
+const CompanyProfileDocument = sequelize.define(
+  'CompanyProfileDocument',
+  {
+    ...base,
+    type: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        isIn: [['LEGAL', 'CERTIFICATION']]
+      }
+    },
+    title: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    documentNumber: DataTypes.STRING,
+    issueDate: DataTypes.DATEONLY,
+    expiryDate: DataTypes.DATEONLY,
+    authority: DataTypes.STRING,
+    remarks: DataTypes.TEXT,
+    filePath: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    originalName: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    mimeType: DataTypes.STRING,
+    sizeBytes: DataTypes.INTEGER,
+    isArchived: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    }
+  }
+);
 const MasterChecklistItem = sequelize.define('MasterChecklistItem', {
   ...base,
   title: { type: DataTypes.TEXT, allowNull: false },

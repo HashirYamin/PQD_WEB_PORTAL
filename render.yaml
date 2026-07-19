@@ -1,0 +1,61 @@
+databases:
+  - name: pqd-web-portal-db
+    plan: free
+    databaseName: pqd_portal
+    user: pqd_portal_user
+    ipAllowList: []
+
+services:
+  - type: web
+    name: pqd-web-portal-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pqd-web-portal-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      - key: FRONTEND_HOST
+        fromService:
+          type: web
+          name: pqd-web-portal
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+      - key: SUPER_ADMIN_NAME
+        value: System Administrator
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: UPLOAD_ROOT
+        value: uploads
+      - key: MAX_UPLOAD_MB
+        value: 25
+      - key: EMAIL_ENABLED
+        value: false
+
+  - type: web
+    name: pqd-web-portal
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_HOST
+        fromService:
+          type: web
+          name: pqd-web-portal-api
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
