@@ -111,7 +111,70 @@ const CompanyProfileDocument = sequelize.define('CompanyProfileDocument', {
   sizeBytes: DataTypes.INTEGER,
   isArchived: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
+const Supplier = sequelize.define('Supplier', {
+  ...base,
 
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+
+  code: DataTypes.STRING,
+
+  registrationNumber: DataTypes.STRING,
+
+  email: DataTypes.STRING,
+
+  phone: DataTypes.STRING,
+
+  website: DataTypes.STRING,
+
+  address: DataTypes.TEXT,
+
+  description: DataTypes.TEXT,
+
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  }
+});
+
+const SupplierContact = sequelize.define(
+  'SupplierContact',
+  {
+    ...base,
+
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+
+    jobTitle: DataTypes.STRING,
+
+    email: DataTypes.STRING,
+
+    phone: DataTypes.STRING,
+
+    isPrimary: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    }
+  }
+);
+
+const SupplierDocumentLink = sequelize.define(
+  'SupplierDocumentLink',
+  {
+    ...base,
+
+    priority: {
+      type: DataTypes.INTEGER,
+      defaultValue: 1
+    },
+
+    remarks: DataTypes.TEXT
+  }
+);
 const MasterChecklistItem = sequelize.define('MasterChecklistItem', {
   ...base,
   title: { type: DataTypes.TEXT, allowNull: false },
@@ -125,16 +188,35 @@ const Project = sequelize.define('Project', {
   ...base,
   name: { type: DataTypes.STRING, allowNull: false },
   number: DataTypes.STRING,
+  contractCode: DataTypes.STRING,
   client: DataTypes.STRING,
   consultant: DataTypes.STRING,
   contractor: DataTypes.STRING,
+  clientLogoPath: DataTypes.STRING,
+  consultantLogoPath: DataTypes.STRING,
+  contractorLogoPath: DataTypes.STRING,
   supplier: DataTypes.STRING,
   productSystem: DataTypes.STRING,
   revision: DataTypes.STRING,
   projectDate: DataTypes.DATEONLY,
+  startDate: DataTypes.DATEONLY,
+  endDate: DataTypes.DATEONLY,
   submittalNumber: DataTypes.STRING,
   discipline: DataTypes.STRING,
   status: { type: DataTypes.STRING, defaultValue: 'ACTIVE' }
+});
+
+const ProjectContact = sequelize.define('ProjectContact', {
+  ...base,
+  name: { type: DataTypes.STRING, allowNull: false },
+  organization: DataTypes.STRING,
+  role: DataTypes.STRING,
+  jobTitle: DataTypes.STRING,
+  email: DataTypes.STRING,
+  phone: DataTypes.STRING,
+  mobile: DataTypes.STRING,
+  isPrimary: { type: DataTypes.BOOLEAN, defaultValue: false },
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 }
 });
 
 const ChildChecklist = sequelize.define('ChildChecklist', {
@@ -222,9 +304,77 @@ CompanyProfileDocument.belongsTo(User, { foreignKey: 'createdById', as: 'created
 
 Company.hasMany(MasterChecklistItem, { foreignKey: 'companyId', as: 'masterChecklistItems' });
 MasterChecklistItem.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+Company.hasMany(Supplier, {
+  foreignKey: 'companyId',
+  as: 'suppliers'
+});
 
+Supplier.belongsTo(Company, {
+  foreignKey: 'companyId',
+  as: 'company'
+});
+
+Supplier.hasMany(SupplierContact, {
+  foreignKey: 'supplierId',
+  as: 'contacts',
+  onDelete: 'CASCADE'
+});
+
+SupplierContact.belongsTo(Supplier, {
+  foreignKey: 'supplierId',
+  as: 'supplier'
+});
+
+Supplier.hasMany(SupplierDocumentLink, {
+  foreignKey: 'supplierId',
+  as: 'documentLinks',
+  onDelete: 'CASCADE'
+});
+
+SupplierDocumentLink.belongsTo(Supplier, {
+  foreignKey: 'supplierId',
+  as: 'supplier'
+});
+
+CompanyDocument.hasMany(SupplierDocumentLink, {
+  foreignKey: 'documentId',
+  as: 'supplierLinks'
+});
+
+SupplierDocumentLink.belongsTo(CompanyDocument, {
+  foreignKey: 'documentId',
+  as: 'document'
+});
+
+MasterChecklistItem.hasMany(
+  SupplierDocumentLink,
+  {
+    foreignKey: 'masterItemId',
+    as: 'supplierDocumentLinks'
+  }
+);
+
+SupplierDocumentLink.belongsTo(
+  MasterChecklistItem,
+  {
+    foreignKey: 'masterItemId',
+    as: 'masterItem'
+  }
+);
+
+Supplier.hasMany(PqdSubmission, {
+  foreignKey: 'supplierId',
+  as: 'submissions'
+});
+
+PqdSubmission.belongsTo(Supplier, {
+  foreignKey: 'supplierId',
+  as: 'supplier'
+});
 Company.hasMany(Project, { foreignKey: 'companyId', as: 'projects' });
 Project.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+Project.hasMany(ProjectContact, { foreignKey: 'projectId', as: 'contacts', onDelete: 'CASCADE' });
+ProjectContact.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 
 Company.hasMany(ChildChecklist, { foreignKey: 'companyId', as: 'childChecklists' });
 ChildChecklist.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
@@ -274,8 +424,14 @@ module.exports = {
   CompanySocialLink,
   CompanyContact,
   CompanyProfileDocument,
+
+  Supplier,
+  SupplierContact,
+  SupplierDocumentLink,
+
   MasterChecklistItem,
   Project,
+  ProjectContact,
   ChildChecklist,
   ChildChecklistItem,
   PqdSubmission,

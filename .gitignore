@@ -36,3 +36,7 @@ Thumbs.db
 # Editor settings
 .vscode/
 .idea/
+# Runtime uploads and generated files
+backend/uploads/
+backend/generated/
+backend/eng.traineddata

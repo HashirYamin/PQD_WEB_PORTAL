@@ -9,6 +9,7 @@ import CompaniesPage from './pages/CompaniesPage';
 import CompanyProfilePage from './pages/CompanyProfilePage';
 import DocumentsPage from './pages/DocumentsPage';
 import ProjectsPage from './pages/ProjectsPage';
+import SuppliersPage from './pages/SuppliersPage';
 import MasterChecklistPage from './pages/MasterChecklistPage';
 import ProjectChecklistsPage from './pages/ProjectChecklistsPage';
 import CreatePqdPage from './pages/CreatePqdPage';
@@ -27,8 +28,9 @@ function AppRoutes() {
         <Route path="companies" element={<CompaniesPage />} />
         <Route path="company-profile" element={<CompanyProfilePage />} />
         <Route path="documents" element={<DocumentsPage />} />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="master-checklist" element={<MasterChecklistPage />} />
+<Route path="projects" element={<ProjectsPage />} />
+<Route path="suppliers" element={<SuppliersPage />} />
+<Route path="master-checklist" element={<MasterChecklistPage />} />
         <Route path="project-checklists" element={<ProjectChecklistsPage />} />
         <Route path="create-pqd" element={<CreatePqdPage />} />
         <Route path="generated-pqds" element={<GeneratedPqdsPage />} />

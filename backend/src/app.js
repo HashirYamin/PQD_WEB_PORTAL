@@ -11,6 +11,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const documentRoutes = require('./routes/documents');
 const checklistRoutes = require('./routes/checklists');
 const projectRoutes = require('./routes/projects');
+const supplierRoutes = require('./routes/suppliers');
 const pqdRoutes = require('./routes/pqds');
 const settingsRoutes = require('./routes/settings');
 const { notFound, errorHandler } = require('./middleware/error');
@@ -33,6 +34,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/checklists', checklistRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/suppliers', supplierRoutes);
 app.use('/api/pqds', pqdRoutes);
 app.use('/api/settings', settingsRoutes);
 

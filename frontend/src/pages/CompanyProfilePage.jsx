@@ -75,7 +75,8 @@ const blankDocument = {
   authority: '',
   remarks: '',
   file: null,
-  applyOcrDate: false
+  applyOcrDate: false,
+  ocrData: null
 };
 
 const tabs = [
@@ -103,6 +104,7 @@ export default function CompanyProfilePage() {
   const [company, setCompany] = useState(null);
   const [profile, setProfile] = useState(emptyProfile);
   const [logo, setLogo] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -121,6 +123,8 @@ export default function CompanyProfilePage() {
   const [documentOpen, setDocumentOpen] = useState(false);
   const [documentForm, setDocumentForm] = useState(blankDocument);
   const [documentEditingId, setDocumentEditingId] = useState(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrResult, setOcrResult] = useState(null);
 
   const load = async () => {
     if (!companyId) {
@@ -150,6 +154,31 @@ export default function CompanyProfilePage() {
   useEffect(() => {
     load();
   }, [companyId]);
+
+  useEffect(() => {
+    let objectUrl = '';
+    let cancelled = false;
+
+    if (!companyId || !company?.logoPath) {
+      setLogoPreviewUrl('');
+      return undefined;
+    }
+
+    api.get(`/companies/${companyId}/logo`, { responseType: 'blob' })
+      .then(({ data }) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(data);
+        setLogoPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setLogoPreviewUrl('');
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [companyId, company?.logoPath]);
 
   const legalDocuments = useMemo(
     () => (company?.profileDocuments || []).filter((item) => item.type === 'LEGAL'),
@@ -330,10 +359,54 @@ export default function CompanyProfilePage() {
           ...document,
           file: null,
           type,
-          expiryNotApplicable: Boolean(document.expiryNotApplicable)
+          expiryNotApplicable: Boolean(document.expiryNotApplicable),
+          ocrData: document.ocrData || null
         }
       : { ...blankDocument, type });
+    setOcrResult(document?.ocrData || null);
     setDocumentOpen(true);
+  };
+
+  const extractSelectedDocument = async (file) => {
+    setDocumentForm((current) => ({ ...current, file, ocrData: null }));
+    setOcrResult(null);
+    if (!file) return;
+
+    setOcrBusy(true);
+    const body = new FormData();
+    body.append('file', file);
+
+    try {
+      const { data } = await api.post(
+        `/companies/${companyId}/profile-documents/extract`,
+        body,
+        { timeout: 120000 }
+      );
+      const extraction = data.extraction || {};
+      const fields = extraction.fields || {};
+
+      setDocumentForm((current) => ({
+        ...current,
+        file,
+        title: fields.title || current.title,
+        documentNumber: fields.documentNumber || current.documentNumber,
+        authority: fields.authority || current.authority,
+        issueDate: fields.issueDate || current.issueDate,
+        expiryDate: current.expiryNotApplicable
+          ? ''
+          : (fields.expiryDate || current.expiryDate),
+        ocrData: extraction
+      }));
+      setOcrResult(extraction);
+
+      const detected = Object.values(fields).filter(Boolean).length;
+      if (detected) toast.success(`${detected} field(s) extracted. Please verify them.`);
+      else toast(extraction.warning || 'No reliable fields were detected. Enter them manually.');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'OCR extraction failed');
+    } finally {
+      setOcrBusy(false);
+    }
   };
 
   const saveDocument = async (event) => {
@@ -380,6 +453,10 @@ export default function CompanyProfilePage() {
         const body = new FormData();
         Object.entries(documentForm).forEach(([key, value]) => {
           if (key === 'file') return;
+          if (key === 'ocrData') {
+            if (value) body.append(key, JSON.stringify(value));
+            return;
+          }
           if (value !== null && value !== undefined) body.append(key, String(value));
         });
         body.append('file', documentForm.file);
@@ -389,9 +466,9 @@ export default function CompanyProfilePage() {
       }
 
       const savedDocument = result?.data?.document;
-      if (savedDocument?.ocrData?.expiryDate) {
+      if (savedDocument?.ocrData?.fields?.expiryDate) {
         toast.success(
-          `Automatic expiry suggestion: ${savedDocument.ocrData.expiryDate}. Please verify it.`
+          `Automatic expiry suggestion: ${savedDocument.ocrData.fields.expiryDate}. Please verify it.`
         );
       } else if (savedDocument?.ocrData?.warning) {
         toast(savedDocument.ocrData.warning);
@@ -669,9 +746,17 @@ export default function CompanyProfilePage() {
               </div>
 
               <div className="logo-preview">
-                <Building2 size={44} />
+                {logoPreviewUrl ? (
+                  <img
+                    src={logoPreviewUrl}
+                    alt={`${profile.name || 'Company'} logo`}
+                    className="company-logo-image"
+                  />
+                ) : (
+                  <Building2 size={44} />
+                )}
                 <strong>{profile.name || 'Company name'}</strong>
-                <span>{company?.logoPath ? 'A logo file is configured.' : 'No logo uploaded yet.'}</span>
+                <span>{logoPreviewUrl ? 'Logo uploaded successfully.' : 'No logo uploaded yet.'}</span>
               </div>
 
               {canEdit && (
@@ -680,7 +765,7 @@ export default function CompanyProfilePage() {
                     Logo file
                     <input
                       type="file"
-                      accept="image/png,image/jpeg"
+                      accept=".png,.jpg,.jpeg,.jfif,.webp,.avif,.svg,image/png,image/jpeg,image/webp,image/avif,image/svg+xml"
                       onChange={(event) => setLogo(event.target.files?.[0] || null)}
                     />
                   </label>
@@ -890,15 +975,23 @@ export default function CompanyProfilePage() {
           <label>Issue date<input type="date" value={documentForm.issueDate || ''} onChange={(e) => setDocumentForm({ ...documentForm, issueDate: e.target.value })} /></label>
           <label>Expiry date<input type="date" value={documentForm.expiryDate || ''} disabled={documentForm.expiryNotApplicable} onChange={(e) => setDocumentForm({ ...documentForm, expiryDate: e.target.value })} /></label>
           <label className="switch-row"><span><strong>Expiry not applicable</strong></span><input type="checkbox" checked={Boolean(documentForm.expiryNotApplicable)} onChange={(e) => setDocumentForm({ ...documentForm, expiryNotApplicable: e.target.checked, expiryDate: e.target.checked ? '' : documentForm.expiryDate })} /></label>
-          <label className="span-2">File {documentEditingId && '(optional replacement)'}<input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" required={!documentEditingId} onChange={(e) => setDocumentForm({ ...documentForm, file: e.target.files?.[0] || null })} /></label>
+          <label className="span-2">File {documentEditingId && '(optional replacement)'}<input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" required={!documentEditingId} onChange={(e) => extractSelectedDocument(e.target.files?.[0] || null)} /></label>
+          {ocrBusy && <div className="ocr-progress span-2"><span className="spinner" /> Extracting document title, number, authority and dates…</div>}
+          {ocrResult && !ocrBusy && (
+            <div className="ocr-result-card span-2">
+              <strong>OCR extraction completed</strong>
+              <span>Method: {ocrResult.method || 'Unknown'}</span>
+              <span>{ocrResult.warning || 'Verify all extracted fields before saving.'}</span>
+            </div>
+          )}
           {documentEditingId && documentForm.file && (
             <label className="switch-row span-2"><span><strong>Apply OCR date from replacement</strong><small>Only enable after reviewing the new file.</small></span><input type="checkbox" checked={Boolean(documentForm.applyOcrDate)} onChange={(e) => setDocumentForm({ ...documentForm, applyOcrDate: e.target.checked })} /></label>
           )}
           <label className="span-2">Remarks<textarea rows="3" value={documentForm.remarks || ''} onChange={(e) => setDocumentForm({ ...documentForm, remarks: e.target.value })} /></label>
           <div className="ocr-help span-2">
-            Automatic extraction checks text PDFs and uses Tesseract OCR for images. Always verify the suggested expiry date before relying on it.
+            Choose a PDF or image and extraction starts immediately. The form is filled with suggested title, document number, authority, issue date and expiry date. Verify every value before saving.
           </div>
-          <div className="form-actions span-2"><button className="primary-button" disabled={saving}><Upload size={17} /> {saving ? 'Saving…' : 'Save document'}</button></div>
+          <div className="form-actions span-2"><button className="primary-button" disabled={saving || ocrBusy}><Upload size={17} /> {saving ? 'Saving…' : 'Save document'}</button></div>
         </form>
       </Modal>
     </>

@@ -1,5 +1,7 @@
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
+const { Op } = require('sequelize');
 const {
   sequelize,
   Company,
@@ -8,22 +10,45 @@ const {
   CompanyAddress,
   CompanySocialLink,
   CompanyContact,
-  CompanyProfileDocument
+  CompanyDocument
 } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createUploader } = require('../utils/upload');
 const { logActivity } = require('../utils/activity');
 const { getDocumentStatus } = require('../utils/docStatus');
-const { extractExpiryDate } = require('../services/expiryExtractionService');
+const { extractDocumentFields } = require('../services/expiryExtractionService');
 
 const router = express.Router();
 
 const logoUpload = createUploader('logos', {
-  allowedMimeTypes: ['image/png', 'image/jpeg'],
+  allowedMimeTypes: [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/avif',
+    'image/svg+xml'
+  ],
   maxBytes: 5 * 1024 * 1024
 }).single('logo');
 
 const profileDocumentUpload = createUploader('company-profile-documents').single('file');
+
+
+const normalizeUploadedLogo = async (file) => {
+  if (['image/png', 'image/jpeg'].includes(file.mimetype)) return file.path;
+  const sharp = require('sharp');
+  const parsed = path.parse(file.path);
+  const convertedPath = path.join(parsed.dir, `${parsed.name}.png`);
+  await sharp(file.path).png().toFile(convertedPath);
+  if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+  return convertedPath;
+};
+
+const parseJsonField = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return null; }
+};
 
 const parseBoolean = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -43,24 +68,44 @@ const profileInclude = [
   { model: AlertSetting, as: 'alertSetting' },
   { model: CompanyAddress, as: 'addresses', separate: true, order: [['isPrimary', 'DESC'], ['createdAt', 'ASC']] },
   { model: CompanySocialLink, as: 'socialLinks', separate: true, order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']] },
-  { model: CompanyContact, as: 'contacts', separate: true, order: [['isPrimary', 'DESC'], ['createdAt', 'ASC']] },
-  {
-    model: CompanyProfileDocument,
-    as: 'profileDocuments',
-    where: { isArchived: false },
-    required: false,
-    separate: true,
-    order: [['type', 'ASC'], ['createdAt', 'DESC']]
-  }
+  { model: CompanyContact, as: 'contacts', separate: true, order: [['isPrimary', 'DESC'], ['createdAt', 'ASC']] }
 ];
 
-const serializeCompany = (company) => {
+const PROFILE_CATEGORIES = ['Legal Documents', 'Certificates'];
+
+const profileTypeFromCategory = (category) => (
+  category === 'Certificates' ? 'CERTIFICATION' : 'LEGAL'
+);
+
+const profileCategoryFromType = (type) => (
+  String(type || '').toUpperCase() === 'CERTIFICATION'
+    ? 'Certificates'
+    : 'Legal Documents'
+);
+
+const serializeProfileDocument = (document) => {
+  const json = document.toJSON ? document.toJSON() : document;
+  return {
+    ...json,
+    type: profileTypeFromCategory(json.category),
+    authority: json.issuingAuthority || null,
+    statusInfo: getDocumentStatus(json.expiryDate, json.expiryNotApplicable)
+  };
+};
+
+const loadProfileDocuments = (companyId) => CompanyDocument.findAll({
+  where: {
+    companyId,
+    isArchived: false,
+    category: { [Op.in]: PROFILE_CATEGORIES }
+  },
+  order: [['category', 'ASC'], ['createdAt', 'DESC']]
+});
+
+const serializeCompany = (company, profileDocuments = []) => {
   if (!company) return null;
   const json = company.toJSON();
-  json.profileDocuments = (json.profileDocuments || []).map((document) => ({
-    ...document,
-    statusInfo: getDocumentStatus(document.expiryDate, document.expiryNotApplicable)
-  }));
+  json.profileDocuments = profileDocuments.map(serializeProfileDocument);
   return json;
 };
 
@@ -252,7 +297,8 @@ router.get('/:id', async (req, res, next) => {
     const company = await Company.findByPk(req.params.id, { include: profileInclude });
     if (!company) return res.status(404).json({ message: 'Company not found.' });
 
-    return res.json({ company: serializeCompany(company) });
+    const profileDocuments = await loadProfileDocuments(company.id);
+    return res.json({ company: serializeCompany(company, profileDocuments) });
   } catch (error) {
     next(error);
   }
@@ -292,7 +338,8 @@ router.put('/:id', async (req, res, next) => {
     await logActivity(req, 'UPDATE', 'Company', company.id, { name: company.name });
 
     const refreshed = await Company.findByPk(company.id, { include: profileInclude });
-    return res.json({ company: serializeCompany(refreshed) });
+    const profileDocuments = await loadProfileDocuments(company.id);
+    return res.json({ company: serializeCompany(refreshed, profileDocuments) });
   } catch (error) {
     next(error);
   }
@@ -304,8 +351,8 @@ router.post('/:id/logo', async (req, res, next) => {
   }
 
   req.companyId = req.params.id;
-
   logoUpload(req, res, async (error) => {
+    let finalLogoPath = null;
     try {
       if (error) throw error;
       if (!req.file) return res.status(400).json({ message: 'Logo file is required.' });
@@ -313,17 +360,39 @@ router.post('/:id/logo', async (req, res, next) => {
       const company = await Company.findByPk(req.params.id);
       if (!company) return res.status(404).json({ message: 'Company not found.' });
 
+      finalLogoPath = await normalizeUploadedLogo(req.file);
       const oldPath = company.logoPath;
-      await company.update({ logoPath: req.file.path });
-      if (oldPath && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      await company.update({ logoPath: finalLogoPath });
+      if (oldPath && oldPath !== finalLogoPath && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
 
       await logActivity(req, 'UPLOAD_LOGO', 'Company', company.id);
       return res.json({ company });
     } catch (err) {
-      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      [req.file?.path, finalLogoPath].filter(Boolean).forEach((filePath) => {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      });
       next(err);
     }
   });
+});
+
+router.get('/:id/logo', async (req, res, next) => {
+  try {
+    if (!canViewCompany(req, req.params.id)) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const company = await Company.findByPk(req.params.id, { attributes: ['id', 'logoPath'] });
+    if (!company?.logoPath) return res.status(404).json({ message: 'Company logo not found.' });
+
+    const absolutePath = path.resolve(company.logoPath);
+    if (!fs.existsSync(absolutePath)) return res.status(404).json({ message: 'Company logo file not found.' });
+
+    res.setHeader('Cache-Control', 'no-store');
+    return res.sendFile(absolutePath);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Addresses
@@ -649,13 +718,38 @@ router.delete('/:id/contacts/:contactId', async (req, res, next) => {
 });
 
 // Legal documents and certifications shown inside Company Profile
+router.post('/:id/profile-documents/extract', async (req, res, next) => {
+  if (!canManageCompany(req, req.params.id)) {
+    return res.status(403).json({ message: 'Access denied.' });
+  }
+
+  req.companyId = req.params.id;
+  profileDocumentUpload(req, res, async (error) => {
+    try {
+      if (error) throw error;
+      if (!req.file) return res.status(400).json({ message: 'Choose a PDF or image file.' });
+
+      const extraction = await extractDocumentFields(
+        req.file.path,
+        req.file.mimetype,
+        req.file.originalname
+      );
+
+      return res.json({ extraction });
+    } catch (err) {
+      next(err);
+    } finally {
+      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    }
+  });
+});
+
 router.post('/:id/profile-documents', async (req, res, next) => {
   if (!canManageCompany(req, req.params.id)) {
     return res.status(403).json({ message: 'Access denied.' });
   }
 
   req.companyId = req.params.id;
-
   profileDocumentUpload(req, res, async (error) => {
     try {
       if (error) throw error;
@@ -670,29 +764,25 @@ router.post('/:id/profile-documents', async (req, res, next) => {
       }
 
       const expiryNotApplicable = parseBoolean(req.body.expiryNotApplicable);
-      const manualExpiryDate = String(req.body.expiryDate || '').trim() || null;
-      const extraction = (!expiryNotApplicable && !manualExpiryDate)
-        ? await extractExpiryDate(req.file.path, req.file.mimetype)
-        : {
-            attempted: false,
-            method: 'MANUAL_ENTRY',
-            expiryDate: null,
-            confidence: 0,
-            candidates: [],
-            warning: null,
-            extractedAt: new Date().toISOString()
-          };
+      const previewExtraction = parseJsonField(req.body.ocrData);
+      const extraction = previewExtraction?.fields
+        ? previewExtraction
+        : await extractDocumentFields(req.file.path, req.file.mimetype, req.file.originalname);
+      const fields = extraction.fields || {};
 
-      const document = await CompanyProfileDocument.create({
+      const document = await CompanyDocument.create({
         companyId: company.id,
         createdById: req.user.id,
-        type,
-        title: String(req.body.title || '').trim() || req.file.originalname,
-        documentNumber: String(req.body.documentNumber || '').trim() || null,
-        issueDate: String(req.body.issueDate || '').trim() || null,
-        expiryDate: expiryNotApplicable ? null : (manualExpiryDate || extraction.expiryDate || null),
+        category: profileCategoryFromType(type),
+        title: String(req.body.title || fields.title || '').trim() || req.file.originalname,
+        documentNumber: String(req.body.documentNumber || fields.documentNumber || '').trim() || null,
+        issueDate: String(req.body.issueDate || fields.issueDate || '').trim() || null,
+        expiryDate: expiryNotApplicable
+          ? null
+          : (String(req.body.expiryDate || fields.expiryDate || '').trim() || null),
         expiryNotApplicable,
-        authority: String(req.body.authority || '').trim() || null,
+        issuingAuthority: String(req.body.authority || fields.authority || '').trim() || null,
+        documentType: type === 'CERTIFICATION' ? 'Certificate' : 'Legal Document',
         remarks: String(req.body.remarks || '').trim() || null,
         ocrData: extraction,
         filePath: req.file.path,
@@ -701,18 +791,14 @@ router.post('/:id/profile-documents', async (req, res, next) => {
         sizeBytes: req.file.size
       });
 
-      req.companyId = company.id;
-      await logActivity(req, 'UPLOAD', 'CompanyProfileDocument', document.id, {
+      await logActivity(req, 'UPLOAD', 'CompanyDocument', document.id, {
         title: document.title,
-        type: document.type,
-        ocrExpiryDate: extraction.expiryDate
+        type,
+        extractedFields: extraction.fields || {}
       });
 
       return res.status(201).json({
-        document: {
-          ...document.toJSON(),
-          statusInfo: getDocumentStatus(document.expiryDate, document.expiryNotApplicable)
-        }
+        document: serializeProfileDocument(document)
       });
     } catch (err) {
       if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
@@ -726,21 +812,27 @@ router.put('/:id/profile-documents/:documentId', async (req, res, next) => {
     const company = await findCompanyForWrite(req, res);
     if (!company) return;
 
-    const document = await CompanyProfileDocument.findOne({
+    const document = await CompanyDocument.findOne({
       where: { id: req.params.documentId, companyId: company.id, isArchived: false }
     });
     if (!document) return res.status(404).json({ message: 'Profile document not found.' });
 
     const updates = {};
-    ['type', 'title', 'documentNumber', 'issueDate', 'expiryDate', 'authority', 'remarks'].forEach((key) => {
+    ['title', 'documentNumber', 'issueDate', 'expiryDate', 'remarks'].forEach((key) => {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) updates[key] = req.body[key] || null;
     });
 
-    if (updates.type) {
-      updates.type = String(updates.type).toUpperCase();
-      if (!['LEGAL', 'CERTIFICATION'].includes(updates.type)) {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'authority')) {
+      updates.issuingAuthority = req.body.authority || null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'type')) {
+      const type = String(req.body.type || '').toUpperCase();
+      if (!['LEGAL', 'CERTIFICATION'].includes(type)) {
         return res.status(400).json({ message: 'Document type must be LEGAL or CERTIFICATION.' });
       }
+      updates.category = profileCategoryFromType(type);
+      updates.documentType = type === 'CERTIFICATION' ? 'Certificate' : 'Legal Document';
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'expiryNotApplicable')) {
@@ -750,13 +842,10 @@ router.put('/:id/profile-documents/:documentId', async (req, res, next) => {
 
     await document.update(updates);
     req.companyId = company.id;
-    await logActivity(req, 'UPDATE', 'CompanyProfileDocument', document.id, { title: document.title });
+    await logActivity(req, 'UPDATE', 'CompanyDocument', document.id, { title: document.title });
 
     return res.json({
-      document: {
-        ...document.toJSON(),
-        statusInfo: getDocumentStatus(document.expiryDate, document.expiryNotApplicable)
-      }
+      document: serializeProfileDocument(document)
     });
   } catch (error) {
     next(error);
@@ -775,12 +864,12 @@ router.post('/:id/profile-documents/:documentId/replace', async (req, res, next)
       if (error) throw error;
       if (!req.file) return res.status(400).json({ message: 'A replacement file is required.' });
 
-      const document = await CompanyProfileDocument.findOne({
+      const document = await CompanyDocument.findOne({
         where: { id: req.params.documentId, companyId: req.params.id, isArchived: false }
       });
       if (!document) return res.status(404).json({ message: 'Profile document not found.' });
 
-      const extraction = await extractExpiryDate(req.file.path, req.file.mimetype);
+      const extraction = await extractDocumentFields(req.file.path, req.file.mimetype, req.file.originalname);
       const oldPath = document.filePath;
       const updates = {
         filePath: req.file.path,
@@ -790,23 +879,30 @@ router.post('/:id/profile-documents/:documentId/replace', async (req, res, next)
         ocrData: extraction
       };
 
-      if (!document.expiryNotApplicable && extraction.expiryDate && parseBoolean(req.body.applyOcrDate, false)) {
-        updates.expiryDate = extraction.expiryDate;
+      const applyOcrFields = parseBoolean(req.body.applyOcrFields, false)
+        || parseBoolean(req.body.applyOcrDate, false);
+
+      if (applyOcrFields) {
+        const fields = extraction.fields || {};
+        if (fields.title) updates.title = fields.title;
+        if (fields.documentNumber) updates.documentNumber = fields.documentNumber;
+        if (fields.authority) updates.issuingAuthority = fields.authority;
+        if (fields.issueDate) updates.issueDate = fields.issueDate;
+        if (!document.expiryNotApplicable && fields.expiryDate) {
+          updates.expiryDate = fields.expiryDate;
+        }
       }
 
       await document.update(updates);
       if (oldPath && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
 
-      await logActivity(req, 'REPLACE_FILE', 'CompanyProfileDocument', document.id, {
+      await logActivity(req, 'REPLACE_FILE', 'CompanyDocument', document.id, {
         title: document.title,
-        ocrExpiryDate: extraction.expiryDate
+        ocrExpiryDate: extraction.fields?.expiryDate || null
       });
 
       return res.json({
-        document: {
-          ...document.toJSON(),
-          statusInfo: getDocumentStatus(document.expiryDate, document.expiryNotApplicable)
-        }
+        document: serializeProfileDocument(document)
       });
     } catch (err) {
       if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
@@ -821,7 +917,7 @@ router.get('/:id/profile-documents/:documentId/download', async (req, res, next)
       return res.status(403).json({ message: 'Access denied.' });
     }
 
-    const document = await CompanyProfileDocument.findOne({
+    const document = await CompanyDocument.findOne({
       where: { id: req.params.documentId, companyId: req.params.id, isArchived: false }
     });
 
@@ -840,14 +936,14 @@ router.delete('/:id/profile-documents/:documentId', async (req, res, next) => {
     const company = await findCompanyForWrite(req, res);
     if (!company) return;
 
-    const document = await CompanyProfileDocument.findOne({
+    const document = await CompanyDocument.findOne({
       where: { id: req.params.documentId, companyId: company.id, isArchived: false }
     });
     if (!document) return res.status(404).json({ message: 'Profile document not found.' });
 
     await document.update({ isArchived: true });
     req.companyId = company.id;
-    await logActivity(req, 'ARCHIVE', 'CompanyProfileDocument', document.id, { title: document.title });
+    await logActivity(req, 'ARCHIVE', 'CompanyDocument', document.id, { title: document.title });
     return res.json({ message: 'Profile document archived.' });
   } catch (error) {
     next(error);
