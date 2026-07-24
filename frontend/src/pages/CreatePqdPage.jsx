@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   FileCheck2,
   FileDown,
+  Package,
   Play,
   Save,
   Truck
@@ -25,15 +26,17 @@ export default function CreatePqdPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
-  const [checklists, setChecklists] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [checklists, setChecklists] = useState([]);
   const [documents, setDocuments] = useState([]);
 
   const [projectId, setProjectId] = useState('');
-  const [checklistId, setChecklistId] = useState('');
   const [supplierId, setSupplierId] = useState('');
-  const [matchPreview, setMatchPreview] = useState(null);
+  const [productId, setProductId] = useState('');
+  const [checklistId, setChecklistId] = useState('');
 
+  const [matchPreview, setMatchPreview] = useState(null);
   const [submission, setSubmission] = useState(null);
   const [validation, setValidation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,52 +49,74 @@ export default function CreatePqdPage() {
     }
 
     setLoading(true);
+    try {
+      const [projectResponse, supplierResponse, documentResponse] =
+        await Promise.all([
+          api.get(appendCompany('/projects')),
+          api.get(appendCompany('/suppliers?active=true')),
+          api.get(appendCompany('/documents'))
+        ]);
 
-    const [projectRes, documentRes, supplierRes] = await Promise.all([
-      api.get(appendCompany('/projects')),
-      api.get(appendCompany('/documents')),
-      api.get(appendCompany('/suppliers?active=true'))
-    ]);
+      const projectRows = projectResponse.data.projects || [];
+      const supplierRows = supplierResponse.data.suppliers || [];
 
-    const projectRows = projectRes.data.projects || [];
-    const supplierRows = supplierRes.data.suppliers || [];
+      setProjects(projectRows);
+      setSuppliers(supplierRows);
+      setDocuments(documentResponse.data.documents || []);
 
-    setProjects(projectRows);
-    setDocuments(documentRes.data.documents || []);
-    setSuppliers(supplierRows);
-
-    const submissionId = searchParams.get('submission');
-
-    if (submissionId) {
-      const { data } = await api.get(
-        appendCompany(`/pqds/${submissionId}`)
-      );
-
-      setSubmission(data.submission);
-      setValidation(data.validation);
-      setProjectId(data.submission.projectId);
-      setChecklistId(data.submission.childChecklistId);
-      setSupplierId(
-        data.submission.supplierId ||
-          data.submission.supplier?.id ||
-          ''
-      );
-    } else {
-      setProjectId(projectRows[0]?.id || '');
-      setSupplierId(supplierRows[0]?.id || '');
+      const submissionId = searchParams.get('submission');
+      if (submissionId) {
+        const { data } = await api.get(
+          appendCompany(`/pqds/${submissionId}`)
+        );
+        setSubmission(data.submission);
+        setValidation(data.validation);
+        setProjectId(data.submission.projectId || '');
+        setSupplierId(data.submission.supplierId || '');
+        setProductId(data.submission.productId || '');
+        setChecklistId(data.submission.childChecklistId || '');
+      } else {
+        setProjectId(projectRows[0]?.id || '');
+        setSupplierId(supplierRows[0]?.id || '');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Could not load PQD builder');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadBase().catch((error) => {
-      toast.error(
-        error.response?.data?.message || 'Could not load PQD builder'
-      );
-      setLoading(false);
-    });
+    loadBase();
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!supplierId) {
+      setProducts([]);
+      setProductId('');
+      return;
+    }
+
+    api
+      .get(appendCompany(`/suppliers/${supplierId}`))
+      .then(({ data }) => {
+        const active = (data.supplier.products || []).filter(
+          (product) => product.isActive
+        );
+        setProducts(active);
+        if (!submission) {
+          setProductId((current) =>
+            active.some((product) => product.id === current)
+              ? current
+              : active[0]?.id || ''
+          );
+        }
+      })
+      .catch(() => {
+        setProducts([]);
+        setProductId('');
+      });
+  }, [supplierId, selectedCompanyId]);
 
   useEffect(() => {
     if (!projectId) {
@@ -102,34 +127,34 @@ export default function CreatePqdPage() {
 
     api
       .get(
-        appendCompany(
-          `/checklists/project?projectId=${projectId}`
-        )
+        appendCompany(`/checklists/project?projectId=${projectId}`)
       )
       .then(({ data }) => {
         const active = (data.checklists || []).filter(
-          (item) => item.isActive
+          (checklist) => checklist.isActive
         );
         setChecklists(active);
-
         if (!submission) {
-          setChecklistId(active[0]?.id || '');
+          setChecklistId((current) =>
+            active.some((checklist) => checklist.id === current)
+              ? current
+              : active[0]?.id || ''
+          );
         }
       });
   }, [projectId, selectedCompanyId]);
 
   useEffect(() => {
-    if (submission || !supplierId || !checklistId) {
+    if (submission || !supplierId || !productId || !checklistId) {
       setMatchPreview(null);
       return;
     }
 
     let cancelled = false;
-
     api
       .get(
         appendCompany(
-          `/suppliers/${supplierId}/matches?childChecklistId=${checklistId}`
+          `/suppliers/${supplierId}/products/${productId}/matches?childChecklistId=${checklistId}`
         )
       )
       .then(({ data }) => {
@@ -142,7 +167,7 @@ export default function CreatePqdPage() {
     return () => {
       cancelled = true;
     };
-  }, [supplierId, checklistId, selectedCompanyId, submission]);
+  }, [supplierId, productId, checklistId, selectedCompanyId, submission]);
 
   const activeDocuments = useMemo(
     () => documents.filter((document) => !document.isArchived),
@@ -150,35 +175,33 @@ export default function CreatePqdPage() {
   );
 
   const createDraft = async () => {
-    if (!projectId || !checklistId || !supplierId) {
-      return toast.error(
-        'Select a project, Project Checklist and supplier.'
+    if (!projectId || !supplierId || !productId || !checklistId) {
+      toast.error(
+        'Select Project, Supplier, Product and Saved Project Checklist.'
       );
+      return;
     }
 
     setBusy(true);
-
     try {
       const { data } = await api.post('/pqds', {
         companyId: selectedCompanyId || undefined,
         projectId,
-        childChecklistId: checklistId,
-        supplierId
+        supplierId,
+        productId,
+        childChecklistId: checklistId
       });
 
       setSubmission(data.submission);
       setValidation(null);
       setSearchParams({ submission: data.submission.id });
-
       toast.success(
         `PQD draft created. ${data.autoMatchedCount || 0} of ${
           data.totalItemCount || 0
-        } item(s) received supplier documents automatically.`
+        } checklist item(s) received product documents automatically.`
       );
     } catch (error) {
-      toast.error(
-        error.response?.data?.message || 'Could not create draft'
-      );
+      toast.error(error.response?.data?.message || 'Could not create PQD draft');
     } finally {
       setBusy(false);
     }
@@ -194,8 +217,8 @@ export default function CreatePqdPage() {
   };
 
   const saveDraft = async () => {
+    if (!submission) return null;
     setBusy(true);
-
     try {
       const { data } = await api.put(
         appendCompany(`/pqds/${submission.id}`),
@@ -209,20 +232,16 @@ export default function CreatePqdPage() {
             remarks: item.remarks,
             includeInPdf: item.includeInPdf,
             sortOrder: index + 1,
-            documentId:
-              item.documentId || item.document?.id || null
+            documentId: item.documentId || item.document?.id || null
           }))
         }
       );
-
       setSubmission(data.submission);
       setValidation(data.validation);
-      toast.success('Draft saved');
+      toast.success('PQD draft saved and validated');
       return data.submission;
     } catch (error) {
-      toast.error(
-        error.response?.data?.message || 'Could not save draft'
-      );
+      toast.error(error.response?.data?.message || 'Could not save draft');
       return null;
     } finally {
       setBusy(false);
@@ -234,17 +253,16 @@ export default function CreatePqdPage() {
     if (!saved) return;
 
     setBusy(true);
-
     try {
       const { data } = await api.post(
         appendCompany(`/pqds/${submission.id}/generate`),
         overrides
       );
-
       toast.success(
-        `PDF version ${data.generatedPdf.version} generated`
+        `PDF version ${data.generatedPdf.version} generated with ${
+          data.mergedDocumentCount || 0
+        } unique document(s).`
       );
-
       const refreshed = await api.get(
         appendCompany(`/pqds/${submission.id}`)
       );
@@ -254,19 +272,14 @@ export default function CreatePqdPage() {
       if (error.response?.status === 409) {
         const warnings = error.response.data.validation;
         setValidation(warnings);
-
-        const message = `This PQD has ${warnings.missing.length} missing and ${warnings.expired.length} expired document(s). Generate anyway?`;
-
-        if (window.confirm(message)) {
-          return generate({
-            allowMissing: true,
-            allowExpired: true
-          });
+        const proceed = window.confirm(
+          `This PQD has ${warnings.missing.length} missing and ${warnings.expired.length} expired document(s). Generate anyway?`
+        );
+        if (proceed) {
+          await generate({ allowMissing: true, allowExpired: true });
         }
       } else {
-        toast.error(
-          error.response?.data?.message || 'PDF generation failed'
-        );
+        toast.error(error.response?.data?.message || 'PDF generation failed');
       }
     } finally {
       setBusy(false);
@@ -274,9 +287,8 @@ export default function CreatePqdPage() {
   };
 
   const downloadLatest = async () => {
-    const latest = submission.generatedPdfs?.[0];
+    const latest = submission?.generatedPdfs?.[0];
     if (!latest) return;
-
     try {
       await downloadWithAuth(
         appendCompany(
@@ -302,8 +314,7 @@ export default function CreatePqdPage() {
   if (!projects.length) {
     return (
       <WarningBox title="Create a project first">
-        A PQD must be linked to a project and one saved Project
-        Checklist.
+        A PQD must be linked to a project.
       </WarningBox>
     );
   }
@@ -311,8 +322,7 @@ export default function CreatePqdPage() {
   if (!suppliers.length) {
     return (
       <WarningBox title="Create a supplier profile first">
-        Add an active supplier and map its documents to Master
-        Checklist items before creating a PQD.{' '}
+        Add an active supplier and its products.{' '}
         <Link to="/suppliers">Open Supplier Profiles</Link>
       </WarningBox>
     );
@@ -322,7 +332,7 @@ export default function CreatePqdPage() {
     <>
       <PageHeader
         title="Create / Edit PQD"
-        description="Required sequence: Project → Project Checklist → Supplier. Supplier mappings automatically attach matching documents."
+        description="Correct sequence: Select Project → Select Supplier → Select Product → Select Saved Project Checklist. Product documents are attached automatically and merged in checklist order."
         actions={
           submission && (
             <>
@@ -348,17 +358,17 @@ export default function CreatePqdPage() {
       {!submission ? (
         <div className="panel-card setup-card">
           <div className="step-badge">Required sequence</div>
-          <h2>Project → Project Checklist → Supplier</h2>
+          <h2>Project → Supplier → Product → Saved Project Checklist</h2>
           <p>
-            The portal compares the selected Project Checklist with
-            supplier mappings and automatically selects matching
-            supplier documents.
+            After all four selections, the system checks every checklist item
+            and attaches the matching documents mapped under the selected
+            product.
           </p>
 
-          <div className="pqd-sequence-grid">
+          <div className="pqd-four-step-grid">
             <label>
               <span className="sequence-number">1</span>
-              Project
+              Select Project
               <select
                 value={projectId}
                 onChange={(event) => {
@@ -368,8 +378,8 @@ export default function CreatePqdPage() {
               >
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
-                    {project.name}{' '}
-                    {project.number ? `(${project.number})` : ''}
+                    {project.name}
+                    {project.number ? ` (${project.number})` : ''}
                   </option>
                 ))}
               </select>
@@ -377,31 +387,13 @@ export default function CreatePqdPage() {
 
             <label>
               <span className="sequence-number">2</span>
-              Saved Project Checklist
-              <select
-                value={checklistId}
-                onChange={(event) =>
-                  setChecklistId(event.target.value)
-                }
-              >
-                <option value="">Select checklist</option>
-                {checklists.map((checklist) => (
-                  <option key={checklist.id} value={checklist.id}>
-                    {checklist.name} ({checklist.items?.length || 0}{' '}
-                    items)
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <span className="sequence-number">3</span>
-              Supplier
+              Select Supplier
               <select
                 value={supplierId}
-                onChange={(event) =>
-                  setSupplierId(event.target.value)
-                }
+                onChange={(event) => {
+                  setSupplierId(event.target.value);
+                  setProductId('');
+                }}
               >
                 <option value="">Select supplier</option>
                 {suppliers.map((supplier) => (
@@ -412,31 +404,61 @@ export default function CreatePqdPage() {
                 ))}
               </select>
             </label>
-          </div>
 
-          {!checklists.length && (
-            <WarningBox title="No Project Checklist available">
-              Create and save a Project Checklist for this project
-              before starting the PQD.
-            </WarningBox>
-          )}
+            <label>
+              <span className="sequence-number">3</span>
+              Select Product
+              <select
+                value={productId}
+                onChange={(event) => setProductId(event.target.value)}
+                disabled={!supplierId}
+              >
+                <option value="">Select product</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                    {product.model ? ` (${product.model})` : ''}
+                  </option>
+                ))}
+              </select>
+              {supplierId && !products.length && (
+                <small>This supplier has no active products.</small>
+              )}
+            </label>
+
+            <label>
+              <span className="sequence-number">4</span>
+              Select Saved Project Checklist
+              <select
+                value={checklistId}
+                onChange={(event) => setChecklistId(event.target.value)}
+                disabled={!projectId}
+              >
+                <option value="">Select checklist</option>
+                {checklists.map((checklist) => (
+                  <option key={checklist.id} value={checklist.id}>
+                    {checklist.name} ({checklist.items?.length || 0} items)
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           {matchPreview && (
             <div className="supplier-match-preview">
-              <Truck size={20} />
+              <Package size={20} />
               <div>
                 <strong>
                   {matchPreview.matchedItemCount} of{' '}
-                  {matchPreview.totalItemCount} checklist item(s) have
-                  supplier document mappings.
+                  {matchPreview.totalItemCount} checklist item(s) have matching
+                  documents for {matchPreview.product?.name}.
                 </strong>
                 <span>
-                  Unmatched items remain empty and can be mapped
-                  manually in the draft.
+                  Missing items remain empty and can be completed manually.
                 </span>
               </div>
               <Link className="secondary-button" to="/suppliers">
-                Manage mappings
+                Manage product documents
               </Link>
             </div>
           )}
@@ -445,13 +467,13 @@ export default function CreatePqdPage() {
             className="primary-button"
             onClick={createDraft}
             disabled={
-              busy || !projectId || !checklistId || !supplierId
+              busy || !projectId || !supplierId || !productId || !checklistId
             }
           >
-            <FileCheck2 size={18} />{' '}
+            <FileCheck2 size={18} />
             {busy
               ? 'Creating…'
-              : 'Create PQD draft and auto-match documents'}
+              : 'Create PQD draft and attach product documents'}
           </button>
         </div>
       ) : (
@@ -470,7 +492,6 @@ export default function CreatePqdPage() {
                   }
                 />
               </label>
-
               <label>
                 Revision
                 <input
@@ -483,18 +504,21 @@ export default function CreatePqdPage() {
                   }
                 />
               </label>
-
               <div className="readonly-field">
                 <span>Project</span>
                 <strong>{submission.project?.name}</strong>
               </div>
               <div className="readonly-field">
-                <span>Checklist</span>
-                <strong>{submission.childChecklist?.name}</strong>
-              </div>
-              <div className="readonly-field">
                 <span>Supplier</span>
                 <strong>{submission.supplier?.name}</strong>
+              </div>
+              <div className="readonly-field">
+                <span>Product</span>
+                <strong>{submission.product?.name}</strong>
+              </div>
+              <div className="readonly-field">
+                <span>Checklist</span>
+                <strong>{submission.childChecklist?.name}</strong>
               </div>
             </div>
 
@@ -523,14 +547,11 @@ export default function CreatePqdPage() {
 
                   <div className="pqd-item-main">
                     <strong>{item.titleSnapshot}</strong>
-
                     <div className="pqd-fields">
                       <label>
                         Document
                         <select
-                          value={
-                            item.documentId || item.document?.id || ''
-                          }
+                          value={item.documentId || item.document?.id || ''}
                           onChange={(event) =>
                             changeItem(
                               item.id,
@@ -541,12 +562,9 @@ export default function CreatePqdPage() {
                         >
                           <option value="">No document attached</option>
                           {activeDocuments.map((document) => (
-                            <option
-                              key={document.id}
-                              value={document.id}
-                            >
+                            <option key={document.id} value={document.id}>
                               {document.title} —{' '}
-                              {document.statusInfo?.label}
+                              {document.statusInfo?.label || 'No status'}
                             </option>
                           ))}
                         </select>
@@ -557,11 +575,7 @@ export default function CreatePqdPage() {
                         <select
                           value={item.status || ''}
                           onChange={(event) =>
-                            changeItem(
-                              item.id,
-                              'status',
-                              event.target.value
-                            )
+                            changeItem(item.id, 'status', event.target.value)
                           }
                         >
                           <option value="">Select status</option>
@@ -580,11 +594,7 @@ export default function CreatePqdPage() {
                         <input
                           value={item.remarks || ''}
                           onChange={(event) =>
-                            changeItem(
-                              item.id,
-                              'remarks',
-                              event.target.value
-                            )
+                            changeItem(item.id, 'remarks', event.target.value)
                           }
                         />
                       </label>
@@ -597,28 +607,21 @@ export default function CreatePqdPage() {
 
           <aside className="pqd-summary-column">
             <div className="panel-card sticky-card">
-              <div className="panel-heading">
-                <div>
-                  <h2>Submission Summary</h2>
-                  <p>Draft health and output versions.</p>
-                </div>
-              </div>
-
+              <h2>Submission Summary</h2>
               <div className="summary-lines">
                 <div>
-                  <span>Total items</span>
+                  <span>Total checklist items</span>
                   <strong>{submission.items?.length || 0}</strong>
                 </div>
                 <div>
-                  <span>Included</span>
+                  <span>Included in final PDF</span>
                   <strong>
-                    {submission.items?.filter(
-                      (item) => item.includeInPdf
-                    ).length || 0}
+                    {submission.items?.filter((item) => item.includeInPdf)
+                      .length || 0}
                   </strong>
                 </div>
                 <div>
-                  <span>Attached</span>
+                  <span>Documents attached</span>
                   <strong>
                     {submission.items?.filter(
                       (item) =>
@@ -630,6 +633,10 @@ export default function CreatePqdPage() {
                 <div>
                   <span>Supplier</span>
                   <strong>{submission.supplier?.name || '—'}</strong>
+                </div>
+                <div>
+                  <span>Product</span>
+                  <strong>{submission.product?.name || '—'}</strong>
                 </div>
                 <div>
                   <span>Generated version</span>
@@ -651,11 +658,8 @@ export default function CreatePqdPage() {
                     ) : (
                       <CheckCircle2 size={17} />
                     )}
-                    <span>
-                      {validation.missing.length} missing documents
-                    </span>
+                    <span>{validation.missing.length} missing documents</span>
                   </div>
-
                   <div
                     className={
                       validation.expired.length
@@ -668,11 +672,8 @@ export default function CreatePqdPage() {
                     ) : (
                       <CheckCircle2 size={17} />
                     )}
-                    <span>
-                      {validation.expired.length} expired documents
-                    </span>
+                    <span>{validation.expired.length} expired documents</span>
                   </div>
-
                   <div
                     className={
                       validation.expiringSoon.length
@@ -705,7 +706,7 @@ export default function CreatePqdPage() {
                   onClick={() => generate()}
                   disabled={busy}
                 >
-                  <Play size={17} /> Generate final PDF
+                  <Play size={17} /> Merge all checklist documents
                 </button>
                 {submission.generatedPdfs?.length > 0 && (
                   <button

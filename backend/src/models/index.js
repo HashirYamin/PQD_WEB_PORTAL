@@ -111,70 +111,87 @@ const CompanyProfileDocument = sequelize.define('CompanyProfileDocument', {
   sizeBytes: DataTypes.INTEGER,
   isArchived: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
+
 const Supplier = sequelize.define('Supplier', {
   ...base,
-
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-
+  name: { type: DataTypes.STRING, allowNull: false },
   code: DataTypes.STRING,
-
   registrationNumber: DataTypes.STRING,
-
+  yearEstablished: DataTypes.INTEGER,
+  natureOfBusiness: DataTypes.TEXT,
   email: DataTypes.STRING,
-
   phone: DataTypes.STRING,
-
+  fax: DataTypes.STRING,
   website: DataTypes.STRING,
-
   address: DataTypes.TEXT,
-
+  logoPath: DataTypes.STRING,
+  stampPath: DataTypes.STRING,
   description: DataTypes.TEXT,
-
-  isActive: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
-  }
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
 });
 
-const SupplierContact = sequelize.define(
-  'SupplierContact',
-  {
-    ...base,
+const SupplierAddress = sequelize.define('SupplierAddress', {
+  ...base,
+  label: { type: DataTypes.STRING, defaultValue: 'Main Office' },
+  addressLine1: { type: DataTypes.TEXT, allowNull: false },
+  addressLine2: DataTypes.TEXT,
+  city: DataTypes.STRING,
+  state: DataTypes.STRING,
+  postalCode: DataTypes.STRING,
+  country: DataTypes.STRING,
+  isPrimary: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
 
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
+const SupplierContact = sequelize.define('SupplierContact', {
+  ...base,
+  name: { type: DataTypes.STRING, allowNull: false },
+  jobTitle: DataTypes.STRING,
+  department: DataTypes.STRING,
+  email: DataTypes.STRING,
+  phone: DataTypes.STRING,
+  mobile: DataTypes.STRING,
+  isPrimary: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
 
-    jobTitle: DataTypes.STRING,
+const SupplierProfileDocument = sequelize.define('SupplierProfileDocument', {
+  ...base,
+  type: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: { isIn: [['LEGAL', 'CERTIFICATION']] }
+  },
+  remarks: DataTypes.TEXT,
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+});
 
-    email: DataTypes.STRING,
+const SupplierProduct = sequelize.define('SupplierProduct', {
+  ...base,
+  name: { type: DataTypes.STRING, allowNull: false },
+  code: DataTypes.STRING,
+  model: DataTypes.STRING,
+  brand: DataTypes.STRING,
+  category: DataTypes.STRING,
+  manufacturer: DataTypes.STRING,
+  countryOfOrigin: DataTypes.STRING,
+  description: DataTypes.TEXT,
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+});
 
-    phone: DataTypes.STRING,
+const ProductDocumentLink = sequelize.define('ProductDocumentLink', {
+  ...base,
+  priority: { type: DataTypes.INTEGER, defaultValue: 1 },
+  remarks: DataTypes.TEXT,
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+});
 
-    isPrimary: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
-    }
-  }
-);
+// Kept only for migration from the earlier supplier-level implementation.
+const SupplierDocumentLink = sequelize.define('SupplierDocumentLink', {
+  ...base,
+  priority: { type: DataTypes.INTEGER, defaultValue: 1 },
+  remarks: DataTypes.TEXT
+});
 
-const SupplierDocumentLink = sequelize.define(
-  'SupplierDocumentLink',
-  {
-    ...base,
-
-    priority: {
-      type: DataTypes.INTEGER,
-      defaultValue: 1
-    },
-
-    remarks: DataTypes.TEXT
-  }
-);
 const MasterChecklistItem = sequelize.define('MasterChecklistItem', {
   ...base,
   title: { type: DataTypes.TEXT, allowNull: false },
@@ -290,13 +307,10 @@ CompanyDocument.belongsTo(User, { foreignKey: 'createdById', as: 'createdBy' });
 
 Company.hasMany(CompanyAddress, { foreignKey: 'companyId', as: 'addresses', onDelete: 'CASCADE' });
 CompanyAddress.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
-
 Company.hasMany(CompanySocialLink, { foreignKey: 'companyId', as: 'socialLinks', onDelete: 'CASCADE' });
 CompanySocialLink.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
-
 Company.hasMany(CompanyContact, { foreignKey: 'companyId', as: 'contacts', onDelete: 'CASCADE' });
 CompanyContact.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
-
 Company.hasMany(CompanyProfileDocument, { foreignKey: 'companyId', as: 'profileDocuments', onDelete: 'CASCADE' });
 CompanyProfileDocument.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 User.hasMany(CompanyProfileDocument, { foreignKey: 'createdById', as: 'uploadedProfileDocuments' });
@@ -304,73 +318,33 @@ CompanyProfileDocument.belongsTo(User, { foreignKey: 'createdById', as: 'created
 
 Company.hasMany(MasterChecklistItem, { foreignKey: 'companyId', as: 'masterChecklistItems' });
 MasterChecklistItem.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
-Company.hasMany(Supplier, {
-  foreignKey: 'companyId',
-  as: 'suppliers'
-});
 
-Supplier.belongsTo(Company, {
-  foreignKey: 'companyId',
-  as: 'company'
-});
+Company.hasMany(Supplier, { foreignKey: 'companyId', as: 'suppliers' });
+Supplier.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
+Supplier.hasMany(SupplierAddress, { foreignKey: 'supplierId', as: 'addresses', onDelete: 'CASCADE' });
+SupplierAddress.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
+Supplier.hasMany(SupplierContact, { foreignKey: 'supplierId', as: 'contacts', onDelete: 'CASCADE' });
+SupplierContact.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
+Supplier.hasMany(SupplierProfileDocument, { foreignKey: 'supplierId', as: 'profileDocuments', onDelete: 'CASCADE' });
+SupplierProfileDocument.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
+CompanyDocument.hasMany(SupplierProfileDocument, { foreignKey: 'documentId', as: 'supplierProfileLinks' });
+SupplierProfileDocument.belongsTo(CompanyDocument, { foreignKey: 'documentId', as: 'document' });
+Supplier.hasMany(SupplierProduct, { foreignKey: 'supplierId', as: 'products', onDelete: 'CASCADE' });
+SupplierProduct.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
+SupplierProduct.hasMany(ProductDocumentLink, { foreignKey: 'productId', as: 'documentLinks', onDelete: 'CASCADE' });
+ProductDocumentLink.belongsTo(SupplierProduct, { foreignKey: 'productId', as: 'product' });
+CompanyDocument.hasMany(ProductDocumentLink, { foreignKey: 'documentId', as: 'productLinks' });
+ProductDocumentLink.belongsTo(CompanyDocument, { foreignKey: 'documentId', as: 'document' });
+MasterChecklistItem.hasMany(ProductDocumentLink, { foreignKey: 'masterItemId', as: 'productDocumentLinks' });
+ProductDocumentLink.belongsTo(MasterChecklistItem, { foreignKey: 'masterItemId', as: 'masterItem' });
 
-Supplier.hasMany(SupplierContact, {
-  foreignKey: 'supplierId',
-  as: 'contacts',
-  onDelete: 'CASCADE'
-});
+Supplier.hasMany(SupplierDocumentLink, { foreignKey: 'supplierId', as: 'legacyDocumentLinks', onDelete: 'CASCADE' });
+SupplierDocumentLink.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
+CompanyDocument.hasMany(SupplierDocumentLink, { foreignKey: 'documentId', as: 'legacySupplierLinks' });
+SupplierDocumentLink.belongsTo(CompanyDocument, { foreignKey: 'documentId', as: 'document' });
+MasterChecklistItem.hasMany(SupplierDocumentLink, { foreignKey: 'masterItemId', as: 'legacySupplierDocumentLinks' });
+SupplierDocumentLink.belongsTo(MasterChecklistItem, { foreignKey: 'masterItemId', as: 'masterItem' });
 
-SupplierContact.belongsTo(Supplier, {
-  foreignKey: 'supplierId',
-  as: 'supplier'
-});
-
-Supplier.hasMany(SupplierDocumentLink, {
-  foreignKey: 'supplierId',
-  as: 'documentLinks',
-  onDelete: 'CASCADE'
-});
-
-SupplierDocumentLink.belongsTo(Supplier, {
-  foreignKey: 'supplierId',
-  as: 'supplier'
-});
-
-CompanyDocument.hasMany(SupplierDocumentLink, {
-  foreignKey: 'documentId',
-  as: 'supplierLinks'
-});
-
-SupplierDocumentLink.belongsTo(CompanyDocument, {
-  foreignKey: 'documentId',
-  as: 'document'
-});
-
-MasterChecklistItem.hasMany(
-  SupplierDocumentLink,
-  {
-    foreignKey: 'masterItemId',
-    as: 'supplierDocumentLinks'
-  }
-);
-
-SupplierDocumentLink.belongsTo(
-  MasterChecklistItem,
-  {
-    foreignKey: 'masterItemId',
-    as: 'masterItem'
-  }
-);
-
-Supplier.hasMany(PqdSubmission, {
-  foreignKey: 'supplierId',
-  as: 'submissions'
-});
-
-PqdSubmission.belongsTo(Supplier, {
-  foreignKey: 'supplierId',
-  as: 'supplier'
-});
 Company.hasMany(Project, { foreignKey: 'companyId', as: 'projects' });
 Project.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 Project.hasMany(ProjectContact, { foreignKey: 'projectId', as: 'contacts', onDelete: 'CASCADE' });
@@ -380,7 +354,6 @@ Company.hasMany(ChildChecklist, { foreignKey: 'companyId', as: 'childChecklists'
 ChildChecklist.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 Project.hasMany(ChildChecklist, { foreignKey: 'projectId', as: 'childChecklists' });
 ChildChecklist.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
-
 ChildChecklist.hasMany(ChildChecklistItem, { foreignKey: 'childChecklistId', as: 'items', onDelete: 'CASCADE' });
 ChildChecklistItem.belongsTo(ChildChecklist, { foreignKey: 'childChecklistId', as: 'checklist' });
 MasterChecklistItem.hasMany(ChildChecklistItem, { foreignKey: 'masterItemId', as: 'childItems' });
@@ -392,6 +365,10 @@ Project.hasMany(PqdSubmission, { foreignKey: 'projectId', as: 'submissions' });
 PqdSubmission.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 ChildChecklist.hasMany(PqdSubmission, { foreignKey: 'childChecklistId', as: 'submissions' });
 PqdSubmission.belongsTo(ChildChecklist, { foreignKey: 'childChecklistId', as: 'childChecklist' });
+Supplier.hasMany(PqdSubmission, { foreignKey: 'supplierId', as: 'submissions' });
+PqdSubmission.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
+SupplierProduct.hasMany(PqdSubmission, { foreignKey: 'productId', as: 'submissions' });
+PqdSubmission.belongsTo(SupplierProduct, { foreignKey: 'productId', as: 'product' });
 User.hasMany(PqdSubmission, { foreignKey: 'createdById', as: 'createdSubmissions' });
 PqdSubmission.belongsTo(User, { foreignKey: 'createdById', as: 'createdBy' });
 
@@ -409,7 +386,6 @@ GeneratedPdf.belongsTo(User, { foreignKey: 'generatedById', as: 'generatedBy' })
 
 Company.hasOne(AlertSetting, { foreignKey: 'companyId', as: 'alertSetting' });
 AlertSetting.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
-
 Company.hasMany(ActivityLog, { foreignKey: 'companyId', as: 'activityLogs' });
 ActivityLog.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 User.hasMany(ActivityLog, { foreignKey: 'userId', as: 'activityLogs' });
@@ -424,11 +400,13 @@ module.exports = {
   CompanySocialLink,
   CompanyContact,
   CompanyProfileDocument,
-
   Supplier,
+  SupplierAddress,
   SupplierContact,
+  SupplierProfileDocument,
+  SupplierProduct,
+  ProductDocumentLink,
   SupplierDocumentLink,
-
   MasterChecklistItem,
   Project,
   ProjectContact,

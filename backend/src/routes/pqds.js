@@ -10,7 +10,8 @@ const {
   ChildChecklistItem,
   CompanyDocument,
   Supplier,
-  SupplierDocumentLink,
+  SupplierProduct,
+  ProductDocumentLink,
   PqdSubmission,
   PqdSubmissionItem,
   GeneratedPdf,
@@ -28,6 +29,7 @@ const submissionInclude = [
   { model: Project, as: 'project' },
   { model: ChildChecklist, as: 'childChecklist' },
   { model: Supplier, as: 'supplier' },
+  { model: SupplierProduct, as: 'product' },
   {
     model: PqdSubmissionItem,
     as: 'items',
@@ -63,10 +65,7 @@ const validateSubmission = (submission) => {
     if (!item.includeInPdf) continue;
 
     if (!item.document) {
-      missing.push({
-        itemId: item.id,
-        title: item.titleSnapshot
-      });
+      missing.push({ itemId: item.id, title: item.titleSnapshot });
       continue;
     }
 
@@ -104,8 +103,8 @@ const validateSubmission = (submission) => {
   };
 };
 
-const buildAutoDocumentMap = async ({
-  supplierId,
+const buildProductDocumentMap = async ({
+  productId,
   checklistItems,
   companyId,
   transaction
@@ -116,35 +115,31 @@ const buildAutoDocumentMap = async ({
 
   if (!masterIds.length) return new Map();
 
-  const links = await SupplierDocumentLink.findAll({
+  const links = await ProductDocumentLink.findAll({
     where: {
-      supplierId,
-      masterItemId: { [Op.in]: masterIds }
+      productId,
+      masterItemId: { [Op.in]: masterIds },
+      isActive: true
     },
     include: [
       {
         model: CompanyDocument,
         as: 'document',
         required: true,
-        where: {
-          companyId,
-          isArchived: false
-        }
+        where: { companyId, isArchived: false }
       }
     ],
-    order: [['priority', 'ASC'], ['createdAt', 'DESC']],
+    order: [['priority', 'ASC'], ['createdAt', 'ASC']],
     transaction
   });
 
-  const byMasterItem = new Map();
-
+  const map = new Map();
   for (const link of links) {
-    if (!byMasterItem.has(link.masterItemId)) {
-      byMasterItem.set(link.masterItemId, link.documentId);
+    if (!map.has(link.masterItemId)) {
+      map.set(link.masterItemId, link.documentId);
     }
   }
-
-  return byMasterItem;
+  return map;
 };
 
 router.get('/', enforceCompany, async (req, res, next) => {
@@ -156,21 +151,10 @@ router.get('/', enforceCompany, async (req, res, next) => {
     const submissions = await PqdSubmission.findAll({
       where,
       include: [
-        {
-          model: Project,
-          as: 'project',
-          attributes: ['id', 'name', 'number']
-        },
-        {
-          model: ChildChecklist,
-          as: 'childChecklist',
-          attributes: ['id', 'name']
-        },
-        {
-          model: Supplier,
-          as: 'supplier',
-          attributes: ['id', 'name', 'code']
-        },
+        { model: Project, as: 'project', attributes: ['id', 'name', 'number'] },
+        { model: ChildChecklist, as: 'childChecklist', attributes: ['id', 'name'] },
+        { model: Supplier, as: 'supplier', attributes: ['id', 'name', 'code'] },
+        { model: SupplierProduct, as: 'product', attributes: ['id', 'name', 'code', 'model'] },
         {
           model: GeneratedPdf,
           as: 'generatedPdfs',
@@ -192,16 +176,38 @@ router.post('/', enforceCompany, async (req, res, next) => {
 
   try {
     const project = await Project.findOne({
-      where: {
-        id: req.body.projectId,
-        companyId: req.companyId
-      },
+      where: { id: req.body.projectId, companyId: req.companyId },
       transaction
     });
-
     if (!project) {
       await transaction.rollback();
       return res.status(404).json({ message: 'Project not found.' });
+    }
+
+    const supplier = await Supplier.findOne({
+      where: {
+        id: req.body.supplierId,
+        companyId: req.companyId,
+        isActive: true
+      },
+      transaction
+    });
+    if (!supplier) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'Select an active supplier profile.' });
+    }
+
+    const product = await SupplierProduct.findOne({
+      where: {
+        id: req.body.productId,
+        supplierId: supplier.id,
+        isActive: true
+      },
+      transaction
+    });
+    if (!product) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'Select an active product belonging to the supplier.' });
     }
 
     const checklist = await ChildChecklist.findOne({
@@ -221,32 +227,13 @@ router.post('/', enforceCompany, async (req, res, next) => {
       ],
       transaction
     });
-
     if (!checklist) {
       await transaction.rollback();
-      return res.status(404).json({
-        message: 'Project Checklist not found.'
-      });
+      return res.status(404).json({ message: 'Saved Project Checklist not found.' });
     }
 
-    const supplier = await Supplier.findOne({
-      where: {
-        id: req.body.supplierId,
-        companyId: req.companyId,
-        isActive: true
-      },
-      transaction
-    });
-
-    if (!supplier) {
-      await transaction.rollback();
-      return res.status(400).json({
-        message: 'Select an active supplier profile.'
-      });
-    }
-
-    const autoDocumentMap = await buildAutoDocumentMap({
-      supplierId: supplier.id,
+    const autoDocumentMap = await buildProductDocumentMap({
+      productId: product.id,
       checklistItems: checklist.items,
       companyId: req.companyId,
       transaction
@@ -256,12 +243,13 @@ router.post('/', enforceCompany, async (req, res, next) => {
       {
         companyId: req.companyId,
         projectId: project.id,
-        childChecklistId: checklist.id,
         supplierId: supplier.id,
+        productId: product.id,
+        childChecklistId: checklist.id,
         createdById: req.user.id,
         title:
           req.body.title ||
-          `${project.name} - ${checklist.name} - ${supplier.name}`,
+          `${project.name} - ${supplier.name} - ${product.name} - ${checklist.name}`,
         revision: req.body.revision || project.revision || '0',
         status: 'DRAFT'
       },
@@ -282,12 +270,13 @@ router.post('/', enforceCompany, async (req, res, next) => {
     await PqdSubmissionItem.bulkCreate(rows, { transaction });
     await transaction.commit();
 
-    const autoMatchedCount = rows.filter((row) => row.documentId).length;
+    const autoMatchedCount = rows.filter((row) => Boolean(row.documentId)).length;
 
     await logActivity(req, 'CREATE', 'PqdSubmission', submission.id, {
       projectId: project.id,
-      checklistId: checklist.id,
       supplierId: supplier.id,
+      productId: product.id,
+      checklistId: checklist.id,
       autoMatchedCount
     });
 
@@ -305,17 +294,10 @@ router.post('/', enforceCompany, async (req, res, next) => {
 router.get('/:id', enforceCompany, async (req, res, next) => {
   try {
     const submission = await getSubmission(req.params.id, req.companyId);
-
     if (!submission) {
-      return res.status(404).json({
-        message: 'PQD submission not found.'
-      });
+      return res.status(404).json({ message: 'PQD submission not found.' });
     }
-
-    res.json({
-      submission,
-      validation: validateSubmission(submission)
-    });
+    res.json({ submission, validation: validateSubmission(submission) });
   } catch (error) {
     next(error);
   }
@@ -326,18 +308,12 @@ router.put('/:id', enforceCompany, async (req, res, next) => {
 
   try {
     const submission = await PqdSubmission.findOne({
-      where: {
-        id: req.params.id,
-        companyId: req.companyId
-      },
+      where: { id: req.params.id, companyId: req.companyId },
       transaction
     });
-
     if (!submission) {
       await transaction.rollback();
-      return res.status(404).json({
-        message: 'PQD submission not found.'
-      });
+      return res.status(404).json({ message: 'PQD submission not found.' });
     }
 
     await submission.update(
@@ -352,13 +328,9 @@ router.put('/:id', enforceCompany, async (req, res, next) => {
     if (Array.isArray(req.body.items)) {
       for (const item of req.body.items) {
         const record = await PqdSubmissionItem.findOne({
-          where: {
-            id: item.id,
-            submissionId: submission.id
-          },
+          where: { id: item.id, submissionId: submission.id },
           transaction
         });
-
         if (!record) continue;
 
         if (item.documentId) {
@@ -370,12 +342,9 @@ router.put('/:id', enforceCompany, async (req, res, next) => {
             },
             transaction
           });
-
           if (!document) {
             await transaction.rollback();
-            return res.status(400).json({
-              message: 'One selected document is invalid.'
-            });
+            return res.status(400).json({ message: 'One selected document is invalid.' });
           }
         }
 
@@ -394,13 +363,11 @@ router.put('/:id', enforceCompany, async (req, res, next) => {
     }
 
     await transaction.commit();
-
     await logActivity(req, 'UPDATE', 'PqdSubmission', submission.id, {
       title: submission.title
     });
 
     const refreshed = await getSubmission(submission.id, req.companyId);
-
     res.json({
       submission: refreshed,
       validation: validateSubmission(refreshed)
@@ -414,13 +381,9 @@ router.put('/:id', enforceCompany, async (req, res, next) => {
 router.get('/:id/validate', enforceCompany, async (req, res, next) => {
   try {
     const submission = await getSubmission(req.params.id, req.companyId);
-
     if (!submission) {
-      return res.status(404).json({
-        message: 'PQD submission not found.'
-      });
+      return res.status(404).json({ message: 'PQD submission not found.' });
     }
-
     res.json({ validation: validateSubmission(submission) });
   } catch (error) {
     next(error);
@@ -430,11 +393,8 @@ router.get('/:id/validate', enforceCompany, async (req, res, next) => {
 router.post('/:id/generate', enforceCompany, async (req, res, next) => {
   try {
     const submission = await getSubmission(req.params.id, req.companyId);
-
     if (!submission) {
-      return res.status(404).json({
-        message: 'PQD submission not found.'
-      });
+      return res.status(404).json({ message: 'PQD submission not found.' });
     }
 
     const validation = validateSubmission(submission);
@@ -452,25 +412,21 @@ router.post('/:id/generate', enforceCompany, async (req, res, next) => {
     }
 
     const company = await Company.findByPk(req.companyId);
-    const includedItems = (submission.items || []).filter(
-      (item) => item.includeInPdf
-    );
+    const includedItems = (submission.items || []).filter((item) => item.includeInPdf);
     const nextVersion = submission.currentVersion + 1;
-    const outputPath = makeGeneratedPath(
-      req.companyId,
-      submission.id,
-      nextVersion
-    );
+    const outputPath = makeGeneratedPath(req.companyId, submission.id, nextVersion);
 
     const projectData = {
       ...submission.project.toJSON(),
-      supplier:
-        submission.supplier?.name || submission.project.supplier
+      supplier: submission.supplier?.name || submission.project.supplier,
+      productSystem: submission.product?.name || submission.project.productSystem
     };
 
     const result = await generatePqdPdf({
       company: company.toJSON(),
       project: projectData,
+      supplier: submission.supplier?.toJSON() || null,
+      product: submission.product?.toJSON() || null,
       submission: submission.toJSON(),
       items: includedItems.map((item) => item.toJSON()),
       outputPath
@@ -485,21 +441,20 @@ router.post('/:id/generate', enforceCompany, async (req, res, next) => {
       sizeBytes: result.sizeBytes
     });
 
-    await submission.update({
-      status: 'GENERATED',
-      currentVersion: nextVersion
-    });
-
+    await submission.update({ status: 'GENERATED', currentVersion: nextVersion });
     await logActivity(req, 'GENERATE_PDF', 'PqdSubmission', submission.id, {
       version: nextVersion,
       pageCount: result.pageCount,
-      supplierId: submission.supplierId
+      supplierId: submission.supplierId,
+      productId: submission.productId,
+      mergedDocumentCount: result.mergedDocumentCount
     });
 
     res.json({
       generatedPdf: generated,
       validation,
-      pageCount: result.pageCount
+      pageCount: result.pageCount,
+      mergedDocumentCount: result.mergedDocumentCount
     });
   } catch (error) {
     next(error);
@@ -512,31 +467,18 @@ router.get(
   async (req, res, next) => {
     try {
       const submission = await PqdSubmission.findOne({
-        where: {
-          id: req.params.id,
-          companyId: req.companyId
-        }
+        where: { id: req.params.id, companyId: req.companyId }
       });
-
       if (!submission) {
-        return res.status(404).json({
-          message: 'PQD submission not found.'
-        });
+        return res.status(404).json({ message: 'PQD submission not found.' });
       }
 
       const generated = await GeneratedPdf.findOne({
-        where: {
-          id: req.params.versionId,
-          submissionId: submission.id
-        }
+        where: { id: req.params.versionId, submissionId: submission.id }
       });
-
       if (!generated || !fs.existsSync(generated.filePath)) {
-        return res.status(404).json({
-          message: 'Generated PDF file not found.'
-        });
+        return res.status(404).json({ message: 'Generated PDF file not found.' });
       }
-
       res.download(generated.filePath, generated.fileName);
     } catch (error) {
       next(error);
@@ -547,21 +489,13 @@ router.get(
 router.delete('/:id', enforceCompany, async (req, res, next) => {
   try {
     const submission = await PqdSubmission.findOne({
-      where: {
-        id: req.params.id,
-        companyId: req.companyId
-      }
+      where: { id: req.params.id, companyId: req.companyId }
     });
-
     if (!submission) {
-      return res.status(404).json({
-        message: 'PQD submission not found.'
-      });
+      return res.status(404).json({ message: 'PQD submission not found.' });
     }
-
     await submission.destroy();
     await logActivity(req, 'DELETE', 'PqdSubmission', req.params.id);
-
     res.json({ message: 'PQD submission deleted.' });
   } catch (error) {
     next(error);

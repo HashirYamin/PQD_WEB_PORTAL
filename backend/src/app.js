@@ -19,14 +19,44 @@ const { notFound, errorHandler } = require('./middleware/error');
 const app = express();
 
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: env.frontendUrl.split(',').map((item) => item.trim()), credentials: true }));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+  })
+);
+app.use(
+  cors({
+    origin: env.frontendUrl.split(',').map((item) => item.trim()),
+    credentials: true
+  })
+);
 app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, service: 'PQD Web Portal API', timestamp: new Date().toISOString() }));
+app.get('/api/health', (req, res) =>
+  res.json({
+    ok: true,
+    service: 'PQD Web Portal API',
+    timestamp: new Date().toISOString()
+  })
+);
+
+/*
+ * Public registration is deliberately disabled.
+ * Companies are created by Super Admin and users are created by authorized
+ * administrators from the Users module.
+ */
+app.all(
+  /^\/api\/auth\/(register|signup|register-company|company-registration|company-register)(?:\/.*)?$/i,
+  (req, res) =>
+    res.status(404).json({
+      message:
+        'Public company registration is unavailable. Contact your administrator for login credentials.'
+    })
+);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/users', userRoutes);

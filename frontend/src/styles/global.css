@@ -823,3 +823,377 @@ tbody tr:hover { background: #fbfdff; }
     grid-template-columns: 1fr;
   }
 }
+
+
+/* === Client revision: Supplier company profile, products and PQD sequence === */
+.supplier-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.supplier-directory {
+  position: sticky;
+  top: 84px;
+  min-width: 0;
+}
+
+.supplier-directory .search-field {
+  margin-bottom: 14px;
+}
+
+.supplier-list {
+  display: grid;
+  gap: 9px;
+  max-height: calc(100vh - 235px);
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.supplier-list-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 11px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.supplier-list-item:hover,
+.supplier-list-item.active {
+  border-color: #256dad;
+  background: #f2f8ff;
+}
+
+.supplier-list-item > div:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.supplier-list-item strong,
+.supplier-list-item span,
+.supplier-list-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supplier-list-item span,
+.supplier-list-item small {
+  color: #64748b;
+}
+
+.supplier-profile-main {
+  min-width: 0;
+}
+
+.supplier-profile-hero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.supplier-logo-box {
+  width: 92px;
+  height: 92px;
+  flex: 0 0 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #55718c;
+}
+
+.supplier-profile-logo {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: contain;
+}
+
+.supplier-logo-fallback {
+  background: #eef5fc;
+}
+
+.supplier-profile-hero h2 {
+  margin: 0 0 5px;
+}
+
+.supplier-profile-hero p {
+  margin: 0;
+  color: #64748b;
+}
+
+.supplier-summary-grid,
+.product-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.supplier-summary-grid > div,
+.product-facts > div,
+.readonly-field {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e0e7ef;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.supplier-summary-grid span,
+.product-facts span,
+.readonly-field span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.supplier-summary-grid strong,
+.product-facts strong,
+.readonly-field strong {
+  overflow-wrap: anywhere;
+}
+
+.supplier-description {
+  margin: 14px 0 0;
+  color: #475569;
+  white-space: pre-wrap;
+}
+
+.profile-tabs.supplier-tabs {
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.product-workspace {
+  display: grid;
+  grid-template-columns: minmax(230px, 285px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.product-directory {
+  border: 1px solid #e0e7ef;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.product-chip-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.product-chip {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid #dce5ef;
+  border-radius: 9px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.product-chip.active,
+.product-chip:hover {
+  border-color: #256dad;
+  background: #edf6ff;
+}
+
+.product-chip > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.product-chip strong,
+.product-chip small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-chip small {
+  color: #64748b;
+}
+
+.product-detail {
+  min-width: 0;
+}
+
+.document-cell {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+}
+
+.document-cell > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.document-cell strong,
+.document-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-cell span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.file-button {
+  position: relative;
+  cursor: pointer;
+}
+
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pqd-four-step-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.pqd-four-step-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 15px;
+  border: 1px solid #d9e4ee;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.sequence-number {
+  width: 29px;
+  height: 29px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #155f9f;
+  color: #fff;
+  font-weight: 700;
+}
+
+.supplier-match-preview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #bcd8f2;
+  border-radius: 11px;
+  background: #f0f7ff;
+}
+
+.supplier-match-preview > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.supplier-match-preview span {
+  color: #5b6f84;
+}
+
+.step-badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e8f3ff;
+  color: #155f9f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.section-gap {
+  margin-top: 16px;
+}
+
+.button-stack {
+  display: grid;
+  gap: 9px;
+}
+
+.full {
+  width: 100%;
+  justify-content: center;
+}
+
+.secondary-button.danger,
+.icon-button.danger {
+  color: #b42318;
+}
+
+@media (max-width: 1180px) {
+  .pqd-four-step-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .supplier-profile-layout,
+  .product-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-directory {
+    position: static;
+  }
+
+  .supplier-list {
+    max-height: 330px;
+  }
+}
+
+@media (max-width: 700px) {
+  .supplier-profile-hero {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .supplier-summary-grid,
+  .product-facts,
+  .pqd-four-step-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-match-preview {
+    grid-template-columns: 1fr;
+  }
+}
+

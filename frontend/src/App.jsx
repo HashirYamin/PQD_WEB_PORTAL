@@ -16,32 +16,49 @@ import CreatePqdPage from './pages/CreatePqdPage';
 import GeneratedPqdsPage from './pages/GeneratedPqdsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
-import SignupPage from './pages/SignupPage';
 
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<DashboardPage />} />
         <Route path="companies" element={<CompaniesPage />} />
         <Route path="company-profile" element={<CompanyProfilePage />} />
         <Route path="documents" element={<DocumentsPage />} />
-<Route path="projects" element={<ProjectsPage />} />
-<Route path="suppliers" element={<SuppliersPage />} />
-<Route path="master-checklist" element={<MasterChecklistPage />} />
+        <Route path="projects" element={<ProjectsPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="master-checklist" element={<MasterChecklistPage />} />
         <Route path="project-checklists" element={<ProjectChecklistsPage />} />
         <Route path="create-pqd" element={<CreatePqdPage />} />
         <Route path="generated-pqds" element={<GeneratedPqdsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
+
+      <Route path="/signup" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
 
 export default function App() {
-  return <BrowserRouter><AuthProvider><AppRoutes /><Toaster position="top-right" toastOptions={{ duration: 3500 }} /></AuthProvider></BrowserRouter>;
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+        <Toaster
+          position="top-right"
+          toastOptions={{ duration: 3500 }}
+        />
+      </AuthProvider>
+    </BrowserRouter>
+  );
 }
